@@ -57,11 +57,13 @@ def lsbs(x):
     integers...) can be provided and a list (resp. list of list of integers,
     ...) will be returned.
     """
+    # overload for iterables
     try:
-        # overload for iterables
-        return [lsbs(value) for value in x]
+        x = iter(x)
     except TypeError:
         pass
+    else:
+        return [lsbs(value) for value in x]
 
     global n_lsbs
     n_lsbs += 1
@@ -131,13 +133,15 @@ def gt_gate(x, y):
     return ti
 
 
-def decrypt(ciphertext):
+def decrypt(x):
     """Debug helper: decrypt values, lists of values, lists of lists, ..."""
     try:
-        return [decrypt(value) for value in ciphertext]
+        x = iter(x)
     except TypeError:
         pass
-    return private_key.decrypt(ciphertext)
+    else:
+        return [decrypt(value) for value in x]
+    return private_key.decrypt(x)
 
 
 # assume that A has been computed as the sum of the individual ballots
