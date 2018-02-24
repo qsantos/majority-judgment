@@ -72,11 +72,12 @@ def conditional_gate(x, y):
         returns x * y
     """
     global n_conditional_gate
+    n_conditional_gate += 1
+
     for _ in range(n_parties):
         r = random.choice([-1, 1])
         x *= r
         y *= r
-    n_conditional_gate += 1
     return x * private_key.decrypt(y)
 
 
