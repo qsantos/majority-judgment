@@ -33,7 +33,8 @@ n_conditional_gate = 0
 # private_key is used as a global to black-box gates and for debugging
 public_key, private_key = phe.paillier.generate_paillier_keypair()
 
-
+ZERO = public_key.encrypt(0)
+ONE = public_key.encrypt(1)
 
 
 def bitrep(x):
@@ -57,9 +58,8 @@ def bitrep(x):
         n_bitrep += 1
 
         cleartext = int(private_key.decrypt(x))
-        return [
-            public_key.encrypt((cleartext >> i) & 1) for i in range(n_bits)
-        ]
+        return [[ZERO,ONE][(cleartext >> i) & 1] for i in range(n_bits)]
+
 
 def conditional_gate(x, y):
     """Conditional gate, as per ST04
@@ -112,7 +112,7 @@ def gt_gate(x, y):
         y is an encryption of an integer
         returns 1 if x > y else 0
     """
-    ti = public_key.encrypt(0)
+    ti = ZERO
     for xi, yi in zip(x, y):
         # ti = (1 - (xi - yi)**2) * ti + xi*(1-yi)
         #    = (1 - xi - yi + 2 xi yi) ti + xi - xi yi
@@ -171,17 +171,15 @@ is_not_left_to_candidate_median = [
             partial_sums_of_candidate[candidate][choice],
             median_of_candidate[candidate]
         ) for choice in range(n_choices-1)
-    ] + [public_key.encrypt(1)]
-    for candidate in range(n_candidates)
+    ] + [ONE] for candidate in range(n_candidates)
 ]
 is_right_to_candidate_median = [
-    [public_key.encrypt(0)] + [
+    [ZERO] + [
         gt_gate(
             partial_sums_of_candidate[candidate][choice],
             median_of_candidate[candidate]
         ) for choice in range(n_choices-1)
-    ]
-    for candidate in range(n_candidates)
+    ] for candidate in range(n_candidates)
 ]
 is_not_left_to_median = [
     big_and(
@@ -190,7 +188,7 @@ is_not_left_to_median = [
     ) for choice in range(n_choices)
 ]
 is_left_to_median = [
-    public_key.encrypt(1) - is_not_left_to_median[choice]
+    ONE - is_not_left_to_median[choice]
     for choice in range(n_choices)
 ]
 is_right_to_median = [
