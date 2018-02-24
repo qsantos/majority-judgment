@@ -2,9 +2,8 @@
 """
 Majority judgement using Paillier encryption
 
-LSBs and the conditional gates are replaced with black-box oracles where the
-values are decrypted, computation done in the clear, and the result
-re-encrypted. The two oracles count the number of queries.
+LSBs and the conditional gates are partially implemented: the interaction
+between the parties is simulated by generating all values locally
 
 LSBs requires the input to be Paillier encryptions (cannot be adapted to El
 Gamal or BGN). However, the output of the last LSBs can be El Gamal or BGN
@@ -35,6 +34,7 @@ n_bits = 11  # NOTE: have enough bits for double partial sums!
 n_lsbs = 0
 n_parties = 8
 n_conditional_gate = 0
+security_parameter = 80
 
 # public_key is used as a global to encrypt constants (0 or 1)
 # private_key is used as a global to black-box gates and for debugging
@@ -42,6 +42,25 @@ public_key, private_key = phe.paillier.generate_paillier_keypair()
 
 ZERO = public_key.encrypt(0)
 ONE = public_key.encrypt(1)
+
+
+def private_add_gate(x, y):
+    """Add gate for encrypted x and known y, both in binary representation
+
+        x is a list of encrypted bits
+        y is a list of bits
+        return a list of encrypted bits representing the sum of x and y
+
+    Note that the final carry is discarded
+    """
+    c = ZERO
+    z = []
+    for xi, yi in zip(x, y):
+        xi_xor_yi = xi + yi - 2*xi*yi
+        r = xi_xor_yi + c - 2*and_gate(xi_xor_yi, c)
+        c = (xi + yi + c - r) / 2
+        z.append(r)
+    return z
 
 
 def lsbs(x):
@@ -68,8 +87,22 @@ def lsbs(x):
     global n_lsbs
     n_lsbs += 1
 
-    cleartext = int(private_key.decrypt(x))
-    return [[ZERO,ONE][(cleartext >> i) & 1] for i in range(n_bits)]
+    # generate r
+    r = random.randrange(2**(n_bits + security_parameter))
+    # the m first bits of r are published encrypted individually
+    encrypted_r_bits = [[ZERO,ONE][(r >> i) & 1] for i in range(n_bits)]
+
+    # get y in binary representation
+    default_base = 4
+    # compute y
+    y = x - public_key.encrypt(r)
+    # decrypt it (phe could try to fit it into a float and fail)
+    y = private_key.raw_decrypt(y.ciphertext()) >> -(y.exponent*default_base)
+    # extract bits
+    y_bits = [(y >> i) & 1 for i in range(n_bits)]
+
+    # compute x = y + r
+    return private_add_gate(encrypted_r_bits, y_bits)
 
 
 def conditional_gate(x, y):
