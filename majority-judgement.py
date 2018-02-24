@@ -31,7 +31,7 @@ args = parser.parse_args()
 # debug_level = 4: all comparisons as well
 debug_level = args.debug
 
-n_bits = 10
+n_bits = 11  # NOTE: have enough bits for double partial sums!
 n_lsbs = 0
 n_parties = 8
 n_conditional_gate = 0
@@ -151,42 +151,42 @@ A = [[public_key.encrypt(value) for value in row] for row in clear_A]
 n_candidates = len(A)
 n_choices = len(A[0])
 
-median_of_candidate = [sum(row)/2 for row in A]
-partial_sums_of_candidate = [
-    [sum(row[:j]) for j in range(1, len(row))]
+total_sum_of_candidate = [sum(row) for row in A]
+doubled_partial_sums_of_candidate = [
+    [2*sum(row[:j]) for j in range(1, len(row))]
     for row in A
 ]
 
-assert len(median_of_candidate) == n_candidates
-assert len(partial_sums_of_candidate) == n_candidates
-assert len(partial_sums_of_candidate[0]) == n_choices-1
+assert len(total_sum_of_candidate) == n_candidates
+assert len(doubled_partial_sums_of_candidate) == n_candidates
+assert len(doubled_partial_sums_of_candidate[0]) == n_choices-1
 
 if debug_level >= 2:
     print('A =', decrypt(A))
 
 if debug_level >= 3:
-    print('median_of_candidate =', decrypt(median_of_candidate))
-    print('partial_sums_of_candidate =', decrypt(partial_sums_of_candidate))
+    print('total_sum_of_candidate =', decrypt(total_sum_of_candidate))
+    print('doubled_partial_sums_of_candidate =', decrypt(doubled_partial_sums_of_candidate))
 
 # switch to binary representation
-median_of_candidate = lsbs(median_of_candidate)
-partial_sums_of_candidate = lsbs(partial_sums_of_candidate)
+total_sum_of_candidate = lsbs(total_sum_of_candidate)
+doubled_partial_sums_of_candidate = lsbs(doubled_partial_sums_of_candidate)
 
 # compare medians and partial sums to detect which values are left to the
 # best median and which are right to the best median
 is_not_left_to_candidate_median = [
     [
         gt_gate(
-            partial_sums_of_candidate[candidate][choice],
-            median_of_candidate[candidate]
+            doubled_partial_sums_of_candidate[candidate][choice],
+            total_sum_of_candidate[candidate]
         ) for choice in range(n_choices-1)
     ] + [ONE] for candidate in range(n_candidates)
 ]
 is_right_to_candidate_median = [
     [ZERO] + [
         gt_gate(
-            partial_sums_of_candidate[candidate][choice],
-            median_of_candidate[candidate]
+            doubled_partial_sums_of_candidate[candidate][choice],
+            total_sum_of_candidate[candidate]
         ) for choice in range(n_choices-1)
     ] for candidate in range(n_candidates)
 ]
