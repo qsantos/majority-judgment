@@ -187,10 +187,7 @@ is_not_left_to_median = [
         for candidate in range(n_candidates)
     ) for choice in range(n_choices)
 ]
-is_left_to_median = [
-    ONE - is_not_left_to_median[choice]
-    for choice in range(n_choices)
-]
+is_left_to_median = [ONE - v for v in is_not_left_to_median]
 is_right_to_median = [
     big_and(
         is_right_to_candidate_median[candidate][choice]
