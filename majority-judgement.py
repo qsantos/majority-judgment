@@ -101,7 +101,6 @@ def big_and(bits):
     return r
 
 
-
 def gt_gate(x, y):
     """Greater-than gate, as per ST04
 
