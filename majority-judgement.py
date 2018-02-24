@@ -54,11 +54,13 @@ def bitrep(x):
         # overload for iterables
         return [bitrep(value) for value in x]
     except TypeError:
-        global n_bitrep
-        n_bitrep += 1
+        pass
 
-        cleartext = int(private_key.decrypt(x))
-        return [[ZERO,ONE][(cleartext >> i) & 1] for i in range(n_bits)]
+    global n_bitrep
+    n_bitrep += 1
+
+    cleartext = int(private_key.decrypt(x))
+    return [[ZERO,ONE][(cleartext >> i) & 1] for i in range(n_bits)]
 
 
 def conditional_gate(x, y):
@@ -127,7 +129,8 @@ def decrypt(ciphertext):
     try:
         return [decrypt(value) for value in ciphertext]
     except TypeError:
-        return private_key.decrypt(ciphertext)
+        pass
+    return private_key.decrypt(ciphertext)
 
 
 # assume that A has been computed as the sum of the individual ballots
