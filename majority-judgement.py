@@ -97,7 +97,7 @@ def big_and(bits):
     bits = iter(bits)
     r = next(bits)
     for bit in bits:
-        r = conditional_gate(r, bit)
+        r = and_gate(r, bit)
     return r
 
 
