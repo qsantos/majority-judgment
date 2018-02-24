@@ -14,15 +14,22 @@ pairings.
 Depends on `phe` (avaliable through in PIP):
     <https://github.com/n1analytics/python-paillier>
 """
-import phe
 import random
+import argparse
+
+import phe
+
+parser = argparse.ArgumentParser()
+parser.description = 'Run majority judgement protocol using Paillier encrption'
+parser.add_argument('--debug', '-d', default=1, type=int)
+args = parser.parse_args()
 
 # debug_level = 0: quiet
 # debug_level = 1: normal output
 # debug_level = 2: some intermediate values
 # debug_level = 3: detailed intermediate values
 # debug_level = 4: all comparisons as well
-debug_level = 1
+debug_level = args.debug
 
 n_bits = 10
 n_lsbs = 0
