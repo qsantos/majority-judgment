@@ -2,12 +2,12 @@
 """
 Majority judgement using Paillier encryption
 
-BITREP and the conditional gates are replaced with black-box oracles where the
+LSBs and the conditional gates are replaced with black-box oracles where the
 values are decrypted, computation done in the clear, and the result
 re-encrypted. The two oracles count the number of queries.
 
-BITREP requires the input to be Paillier encryptions (cannot be adapted to El
-Gamal or BGN). However, the output of the last BITREP can be El Gamal or BGN
+LSBs requires the input to be Paillier encryptions (cannot be adapted to El
+Gamal or BGN). However, the output of the last LSBs can be El Gamal or BGN
 encryption, so that the last conditional gates could be replaced by offline
 pairings.
 
@@ -25,7 +25,7 @@ import random
 debug_level = 1
 
 n_bits = 10
-n_bitrep = 0
+n_lsbs = 0
 n_parties = 8
 n_conditional_gate = 0
 
@@ -37,14 +37,14 @@ ZERO = public_key.encrypt(0)
 ONE = public_key.encrypt(1)
 
 
-def bitrep(x):
-    """BITREP gate, as per ST06
+def lsbs(x):
+    """LSBs gate, as per ST06
 
     Efficient Binary Conversion for Paillier Encrypted Values
-    Section 5 (page 13), uses section 2 through 4 (pages 7 through 12)
+    Section 4 (pages 10 through 12)
 
         x is an encryption of an integer
-        retunrns the list of the encrypted bits of x
+        returns the list of the encrypted bits of x
 
     Alternatively, an iterable of integers (resp. iterable of iterable of
     integers...) can be provided and a list (resp. list of list of integers,
@@ -52,12 +52,12 @@ def bitrep(x):
     """
     try:
         # overload for iterables
-        return [bitrep(value) for value in x]
+        return [lsbs(value) for value in x]
     except TypeError:
         pass
 
-    global n_bitrep
-    n_bitrep += 1
+    global n_lsbs
+    n_lsbs += 1
 
     cleartext = int(private_key.decrypt(x))
     return [[ZERO,ONE][(cleartext >> i) & 1] for i in range(n_bits)]
@@ -162,8 +162,8 @@ if debug_level >= 3:
     print('partial_sums_of_candidate =', decrypt(partial_sums_of_candidate))
 
 # switch to binary representation
-median_of_candidate = bitrep(median_of_candidate)
-partial_sums_of_candidate = bitrep(partial_sums_of_candidate)
+median_of_candidate = lsbs(median_of_candidate)
+partial_sums_of_candidate = lsbs(partial_sums_of_candidate)
 
 # compare medians and partial sums to detect which values are left to the
 # best median and which are right to the best median
@@ -228,8 +228,8 @@ if debug_level >= 2:
     print('T_victory =', decrypt(T_victory))
 
 # now that we have T, we switch to binary representation again
-T_elimination = bitrep(T_elimination)
-T_victory = bitrep(T_victory)
+T_elimination = lsbs(T_elimination)
+T_victory = lsbs(T_victory)
 # here, the output could be El Gamal or BGN ciphers instead
 
 # and now, it only remain to find the winner using the explicit formula
@@ -252,5 +252,5 @@ for candidate in range(n_candidates):
 
 # show calls to oracles
 if debug_level >= 1:
-    print('{} BITREP invocations'.format(n_bitrep))
+    print('{} LSBs invocations'.format(n_lsbs))
     print('{} conditional gates'.format(n_conditional_gate))
