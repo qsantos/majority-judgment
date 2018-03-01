@@ -53,7 +53,7 @@ def halve(x):
 
 
 def private_add_gate(x, y):
-    """Add gate for encrypted x and known y, both in binary representation
+    """Add gate for encrypted x and clear y, both in binary representation
 
         x is a list of encrypted bits
         y is a list of bits
@@ -104,7 +104,7 @@ def lsbs(x):
     y = int(private_key.decrypt(x - public_key.encrypt(r)))
     y_bits = [(y >> i) & 1 for i in range(n_bits)]
 
-    # compute x = y + r
+    # compute x = y + r using the encrypted bits of r and the clear bits of y
     return private_add_gate(encrypted_r_bits, y_bits)
 
 
