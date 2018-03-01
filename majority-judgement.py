@@ -61,14 +61,21 @@ def private_add_gate(x, y):
 
     Note that the final carry is discarded
     """
-    c = ZERO
-    z = []
+    x, y = iter(x), iter(y)
+    ret = []
+
+    # first bit (no and_gate needed)
+    xi, yi = next(x), next(y)
+    ret = [xi + yi - 2*xi*yi]  # xi ^ yi
+    c = xi*yi  # xi & yi
+
+    # rest of the bits (one and_gate per bit)
     for xi, yi in zip(x, y):
         xi_xor_yi = xi + yi - 2*xi*yi
         r = xi_xor_yi + c - 2*and_gate(xi_xor_yi, c)
         c = halve(xi + yi + c - r)
-        z.append(r)
-    return z
+        ret.append(r)
+    return ret
 
 
 def lsbs(x):
@@ -158,7 +165,14 @@ def gt_gate(x, y):
         y is an encryption of an integer
         returns 1 if x > y else 0
     """
-    ti = ZERO
+    x, y = iter(x), iter(y)
+
+    # first bit (only one and_gate needed)
+    xi, yi = next(x), next(y)
+    xi_yi = and_gate(xi, yi)
+    ti = xi - xi_yi
+
+    # rest of the bits (two and_gate per bit)
     for xi, yi in zip(x, y):
         # ti = (1 - (xi - yi)**2) * ti + xi*(1-yi)
         #    = (1 - xi - yi + 2 xi yi) ti + xi - xi yi
