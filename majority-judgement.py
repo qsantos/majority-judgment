@@ -98,7 +98,7 @@ def lsbs(x):
     # generate r
     r = random.randrange(2**(n_bits + security_parameter))
     # the m first bits of r are published encrypted individually
-    encrypted_r_bits = [[ZERO,ONE][(r >> i) & 1] for i in range(n_bits)]
+    encrypted_r_bits = [[ZERO, ONE][(r >> i) & 1] for i in range(n_bits)]
 
     # get clear bits of y = x - r
     y = int(private_key.decrypt(x - public_key.encrypt(r)))
@@ -130,11 +130,11 @@ def conditional_gate(x, y):
 
 def and_gate(x, y):
     """Extended and gate
-    
+
         x is an encryption of an integer
         y is an encryption of 0 or 1
         returns x if y = 1 else 0
-    
+
     When x is 0 or 1, acts as a normal and gate"""
     return halve(conditional_gate(x, 2*y-1) + x)
 
