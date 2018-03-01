@@ -43,6 +43,14 @@ public_key, private_key = phe.paillier.generate_paillier_keypair()
 ZERO = public_key.encrypt(0)
 ONE = public_key.encrypt(1)
 
+# we sometimes need to halve integers that are known to be even; using
+# `EncryptedNumber.__truediv__` casts it to float, so we do it manually instead
+HALF_MOD_N = phe.util.invert(2, public_key.n)
+
+
+def halve(x):
+    return phe.EncryptedNumber(public_key, x._raw_mul(HALF_MOD_N), x.exponent)
+
 
 def private_add_gate(x, y):
     """Add gate for encrypted x and known y, both in binary representation
@@ -58,7 +66,7 @@ def private_add_gate(x, y):
     for xi, yi in zip(x, y):
         xi_xor_yi = xi + yi - 2*xi*yi
         r = xi_xor_yi + c - 2*and_gate(xi_xor_yi, c)
-        c = (xi + yi + c - r) / 2
+        c = halve(xi + yi + c - r)
         z.append(r)
     return z
 
@@ -92,13 +100,8 @@ def lsbs(x):
     # the m first bits of r are published encrypted individually
     encrypted_r_bits = [[ZERO,ONE][(r >> i) & 1] for i in range(n_bits)]
 
-    # get y in binary representation
-    default_base = 4
-    # compute y
-    y = x - public_key.encrypt(r)
-    # decrypt it (phe could try to fit it into a float and fail)
-    y = private_key.raw_decrypt(y.ciphertext()) >> -(y.exponent*default_base)
-    # extract bits
+    # get clear bits of y = x - r
+    y = int(private_key.decrypt(x - public_key.encrypt(r)))
     y_bits = [(y >> i) & 1 for i in range(n_bits)]
 
     # compute x = y + r
@@ -133,7 +136,7 @@ def and_gate(x, y):
         returns x if y = 1 else 0
     
     When x is 0 or 1, acts as a normal and gate"""
-    return (conditional_gate(x, 2*y-1) + x) / 2
+    return halve(conditional_gate(x, 2*y-1) + x)
 
 
 def big_and(bits):
