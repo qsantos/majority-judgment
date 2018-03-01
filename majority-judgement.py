@@ -248,14 +248,14 @@ is_not_left_to_median = [
     big_and(
         is_not_left_to_candidate_median[candidate][choice]
         for candidate in range(n_candidates)
-    ) for choice in range(n_choices)
-]
+    ) for choice in range(n_choices-1)
+] + [ONE]
 is_left_to_median = [ONE - v for v in is_not_left_to_median]
-is_right_to_median = [
+is_right_to_median = [ZERO] + [
     big_and(
         is_right_to_candidate_median[candidate][choice]
         for candidate in range(n_candidates)
-    ) for choice in range(n_choices)
+    ) for choice in range(1, n_choices)
 ]
 
 if debug_level >= 3:
@@ -273,14 +273,14 @@ if debug_level >= 3:
 T_elimination = [
     sum(
         and_gate(A[candidate][choice], is_left_to_median[choice])
-        for choice in range(n_choices)
+        for choice in range(n_choices-1)
     ) for candidate in range(n_candidates)
 ]
 # right column
 T_victory = [
     sum(
         and_gate(A[candidate][choice], is_right_to_median[choice])
-        for choice in range(n_choices)
+        for choice in range(1, n_choices)
     ) for candidate in range(n_candidates)
 ]
 
