@@ -154,15 +154,34 @@ def and_gate_batched(x_batch, y_batch):
     return [halve(x_or_minus_x + x) for x_or_minus_x, x in zip(x_or_minus_x_batch, x_batch)]
 
 
-def big_and(bits):
+def big_and_batched(bits_batch):
     """Reduce bits through and_gate"""
-    bits = list(bits)
-    while len(bits) > 1:
-        half = len(bits) // 2
-        left, right = bits[:half], bits[half:2*half]
-        rest = bits[2*half:]  # either zero or one element
-        bits = and_gate_batched(left, right) + rest
-    return bits[0]
+    bits_batch = [list(bits) for bits in bits_batch]
+    while any(len(bits) > 1 for bits in bits_batch):
+        half_batch = [len(bits) // 2 for bits in bits_batch]
+        left_batch = [bits[:half] for bits, half in zip(bits_batch, half_batch)]
+        right_batch = [bits[half:half*2] for bits, half in zip(bits_batch, half_batch)]
+        rest_batch = [bits[half*2:] for bits, half in zip(bits_batch, half_batch)]  # either zero or one element
+
+        # flatten
+        left_flat = [x for left in left_batch for x in left]
+        right_flat = [x for right in right_batch for x in right]
+
+        # run the gate batched
+        result_flat = and_gate_batched(left_flat, right_flat)
+
+        # unflaten
+        result_batch = []
+        total = 0
+        for half in half_batch:
+            result_batch.append(result_flat[total:total+half])
+            total += half
+
+        # append rest
+        bits_batch = [
+            result + rest for result, rest in zip(result_batch, rest_batch)
+        ]
+    return [bits[0] for bits in bits_batch]
 
 
 def gt_gate(x, y):
@@ -254,19 +273,19 @@ is_right_to_candidate_median = [
         ) for choice in range(n_choices-1)
     ] for candidate in range(n_candidates)
 ]
-is_not_left_to_median = [
-    big_and(
+is_not_left_to_median = big_and_batched([
+    [
         is_not_left_to_candidate_median[candidate][choice]
         for candidate in range(n_candidates)
-    ) for choice in range(n_choices-1)
-] + [ONE]
+    ] for choice in range(n_choices-1)
+]) + [ONE]
 is_left_to_median = [ONE - v for v in is_not_left_to_median]
-is_right_to_median = [ZERO] + [
-    big_and(
+is_right_to_median = [ZERO] + big_and_batched([
+    [
         is_right_to_candidate_median[candidate][choice]
         for candidate in range(n_candidates)
-    ) for choice in range(1, n_choices)
-]
+    ] for choice in range(1, n_choices)
+])
 
 if debug_level >= 3:
     print('is_not_left_to_candidate_median =', decrypt(is_not_left_to_candidate_median))
