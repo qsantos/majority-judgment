@@ -115,7 +115,7 @@ def lsbs(x):
     return private_add_gate(encrypted_r_bits, y_bits)
 
 
-def conditional_gate(x, y):
+def conditional_gate_batched(x_batch, y_batch):
     """Conditional gate, as per ST04
 
     Practical Two-Party Computation Based on the Conditional Gate
@@ -128,11 +128,15 @@ def conditional_gate(x, y):
     global n_conditional_gate
     n_conditional_gate += 1
 
+    x_batch, y_batch = list(x_batch), list(y_batch)
+    assert len(x_batch) == len(y_batch)
+
     for _ in range(n_parties):
-        r = random.choice([-1, 1])
-        x *= r
-        y *= r
-    return x * private_key.decrypt(y)
+        for i in range(len(x_batch)):
+            r = random.choice([-1, 1])
+            x_batch[i] *= r
+            y_batch[i] *= r
+    return [x * private_key.decrypt(y) for x, y in zip(x_batch, y_batch)]
 
 
 def and_gate(x, y):
@@ -143,7 +147,8 @@ def and_gate(x, y):
         returns x if y = 1 else 0
 
     When x is 0 or 1, acts as a normal and gate"""
-    return halve(conditional_gate(x, 2*y-1) + x)
+    x_or_minus_x = conditional_gate_batched([x], [2*y-1])[0]
+    return halve(x_or_minus_x + x)
 
 
 def big_and(bits):
