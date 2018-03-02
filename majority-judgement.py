@@ -73,7 +73,7 @@ def private_add_gate(x, y):
     # rest of the bits (one and_gate per bit)
     for xi, yi in zip(x, y):
         xi_xor_yi = xi + yi - 2*xi*yi
-        r = xi_xor_yi + c - 2*and_gate(xi_xor_yi, c)
+        r = xi_xor_yi + c - 2*and_gate_batched([xi_xor_yi], [c])[0]
         c = halve(xi + yi + c - r)
         ret.append(r)
     return ret
@@ -141,7 +141,7 @@ def conditional_gate_batched(x_batch, y_batch):
     return [x * private_key.decrypt(y) for x, y in zip(x_batch, y_batch)]
 
 
-def and_gate(x, y):
+def and_gate_batched(x_batch, y_batch):
     """Extended and gate
 
         x is an encryption of an integer
@@ -149,8 +149,9 @@ def and_gate(x, y):
         returns x if y = 1 else 0
 
     When x is 0 or 1, acts as a normal and gate"""
-    x_or_minus_x = conditional_gate_batched([x], [2*y-1])[0]
-    return halve(x_or_minus_x + x)
+    y_as_one_or_minus_one_batch = [2*y-1 for y in y_batch]
+    x_or_minus_x_batch = conditional_gate_batched(x_batch, y_as_one_or_minus_one_batch)
+    return [halve(x_or_minus_x + x) for x_or_minus_x, x in zip(x_or_minus_x_batch, x_batch)]
 
 
 def big_and(bits):
@@ -158,7 +159,7 @@ def big_and(bits):
     bits = iter(bits)
     r = next(bits)
     for bit in bits:
-        r = and_gate(r, bit)
+        r = and_gate_batched([r], [bit])[0]
     return r
 
 
@@ -176,15 +177,15 @@ def gt_gate(x, y):
 
     # first bit (only one and_gate needed)
     xi, yi = next(x), next(y)
-    xi_yi = and_gate(xi, yi)
+    xi_yi = and_gate_batched([xi], [yi])[0]
     ti = xi - xi_yi
 
     # rest of the bits (two and_gate per bit)
     for xi, yi in zip(x, y):
         # ti = (1 - (xi - yi)**2) * ti + xi*(1-yi)
         #    = (1 - xi - yi + 2 xi yi) ti + xi - xi yi
-        xi_yi = and_gate(xi, yi)
-        ti = and_gate(1 - xi - yi + 2*xi_yi, ti) + xi - xi_yi
+        xi_yi = and_gate_batched([xi], [yi])[0]
+        ti = and_gate_batched([1 - xi - yi + 2*xi_yi], [ti])[0] + xi - xi_yi
     if debug_level >= 4:
         print('{} > {} -> {}'.format(decrypt(x), decrypt(y), decrypt(ti)))
     return ti
@@ -279,14 +280,14 @@ if debug_level >= 3:
 # left column
 T_elimination = [
     sum(
-        and_gate(A[candidate][choice], is_left_to_median[choice])
+        and_gate_batched([A[candidate][choice]], [is_left_to_median[choice]])[0]
         for choice in range(n_choices-1)
     ) for candidate in range(n_candidates)
 ]
 # right column
 T_victory = [
     sum(
-        and_gate(A[candidate][choice], is_right_to_median[choice])
+        and_gate_batched([A[candidate][choice]], [is_right_to_median[choice]])[0]
         for choice in range(1, n_choices)
     ) for candidate in range(n_candidates)
 ]
@@ -304,10 +305,10 @@ T_victory = lsbs(T_victory)
 for candidate in range(n_candidates):
     # explicit formula (sum of simple ands version)
     lose = gt_gate(T_elimination[candidate], T_victory[candidate]) + sum(
-        and_gate(
-            gt_gate(T_victory[other_candidate], T_elimination[other_candidate]),
-            gt_gate(T_victory[other_candidate], T_victory[candidate])
-        )
+        and_gate_batched(
+            [gt_gate(T_victory[other_candidate], T_elimination[other_candidate])],
+            [gt_gate(T_victory[other_candidate], T_victory[candidate])]
+        )[0]
         for other_candidate in range(n_candidates)
         if other_candidate != candidate
     )
