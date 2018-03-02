@@ -194,19 +194,19 @@ def gt_gate(x, y):
         y is an encryption of an integer
         returns 1 if x > y else 0
     """
-    x, y = iter(x), iter(y)
+    x, y = list(x), list(y)
+
+    # first, compute all xi & yi in batch
+    x_and_y = and_gate_batched(x, y)
 
     # first bit (only one and_gate needed)
-    xi, yi = next(x), next(y)
-    xi_yi = and_gate_batched([xi], [yi])[0]
-    ti = xi - xi_yi
+    ti = x[0] - x_and_y[0]
 
     # rest of the bits (two and_gate per bit)
-    for xi, yi in zip(x, y):
+    for xi, yi, xi_and_yi in zip(x, y, x_and_y):
         # ti = (1 - (xi - yi)**2) * ti + xi*(1-yi)
         #    = (1 - xi - yi + 2 xi yi) ti + xi - xi yi
-        xi_yi = and_gate_batched([xi], [yi])[0]
-        ti = and_gate_batched([1 - xi - yi + 2*xi_yi], [ti])[0] + xi - xi_yi
+        ti = and_gate_batched([1 - xi - yi + 2*xi_and_yi], [ti])[0] + xi - xi_and_yi
     if debug_level >= 4:
         print('{} > {} -> {}'.format(decrypt(x), decrypt(y), decrypt(ti)))
     return ti
