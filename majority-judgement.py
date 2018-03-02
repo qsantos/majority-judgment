@@ -279,17 +279,13 @@ if debug_level >= 3:
 
 # left column
 T_elimination = [
-    sum(
-        and_gate_batched([A[candidate][choice]], [is_left_to_median[choice]])[0]
-        for choice in range(n_choices-1)
-    ) for candidate in range(n_candidates)
+    sum(and_gate_batched(A[candidate][:-1], is_left_to_median[:-1]))
+    for candidate in range(n_candidates)
 ]
 # right column
 T_victory = [
-    sum(
-        and_gate_batched([A[candidate][choice]], [is_right_to_median[choice]])[0]
-        for choice in range(1, n_choices)
-    ) for candidate in range(n_candidates)
+    sum(and_gate_batched(A[candidate][1:], is_right_to_median[1:]))
+    for candidate in range(n_candidates)
 ]
 
 if debug_level >= 2:
@@ -306,11 +302,17 @@ for candidate in range(n_candidates):
     # explicit formula (sum of simple ands version)
     lose = gt_gate(T_elimination[candidate], T_victory[candidate]) + sum(
         and_gate_batched(
-            [gt_gate(T_victory[other_candidate], T_elimination[other_candidate])],
-            [gt_gate(T_victory[other_candidate], T_victory[candidate])]
-        )[0]
-        for other_candidate in range(n_candidates)
-        if other_candidate != candidate
+            [
+                gt_gate(T_victory[other_candidate], T_elimination[other_candidate])
+                for other_candidate in range(n_candidates)
+                if other_candidate != candidate
+            ],
+            [
+                gt_gate(T_victory[other_candidate], T_victory[candidate])
+                for other_candidate in range(n_candidates)
+                if other_candidate != candidate
+            ]
+        )
     )
 
     # reveal whether the result is null or not
