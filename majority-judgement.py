@@ -34,6 +34,7 @@ n_bits = 11  # NOTE: have enough bits for double partial sums!
 n_lsbs = 0
 n_parties = 8
 n_conditional_gate = 0
+d_conditional_gate = 0
 security_parameter = 80
 
 # public_key is used as a global to encrypt constants (0 or 1)
@@ -125,8 +126,9 @@ def conditional_gate_batched(x_batch, y_batch):
         y is an encryption of -1 or 1
         returns x * y
     """
-    global n_conditional_gate
-    n_conditional_gate += 1
+    global n_conditional_gate, d_conditional_gate
+    n_conditional_gate += len(x_batch)
+    d_conditional_gate += 1
 
     x_batch, y_batch = list(x_batch), list(y_batch)
     assert len(x_batch) == len(y_batch)
@@ -319,4 +321,4 @@ for candidate in range(n_candidates):
 # show calls to oracles
 if debug_level >= 1:
     print('{} LSBs invocations'.format(n_lsbs))
-    print('{} conditional gates'.format(n_conditional_gate))
+    print('{} conditional gates (depth: {})'.format(n_conditional_gate, d_conditional_gate))
