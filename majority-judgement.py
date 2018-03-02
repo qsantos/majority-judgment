@@ -156,11 +156,13 @@ def and_gate_batched(x_batch, y_batch):
 
 def big_and(bits):
     """Reduce bits through and_gate"""
-    bits = iter(bits)
-    r = next(bits)
-    for bit in bits:
-        r = and_gate_batched([r], [bit])[0]
-    return r
+    bits = list(bits)
+    while len(bits) > 1:
+        half = len(bits) // 2
+        left, right = bits[:half], bits[half:2*half]
+        rest = bits[2*half:]  # either zero or one element
+        bits = and_gate_batched(left, right) + rest
+    return bits[0]
 
 
 def gt_gate(x, y):
