@@ -53,7 +53,7 @@ def halve(x):
     return phe.EncryptedNumber(public_key, x._raw_mul(HALF_MOD_N), x.exponent)
 
 
-def private_add_gate(x, y):
+def private_add_gate_batched(x_batch, y_batch):
     """Add gate for encrypted x and clear y, both in binary representation
 
         x is a list of encrypted bits
@@ -62,21 +62,37 @@ def private_add_gate(x, y):
 
     Note that the final carry is discarded
     """
-    x, y = iter(x), iter(y)
-    ret = []
+    x_batch = [list(x) for x in x_batch]
+    y_batch = [list(y) for y in y_batch]
+    assert len(x_batch) == len(y_batch)
+    assert all(len(x) == len(y) for x, y in zip(x_batch, y_batch))
+    # not strictly necessary but makes the code easier
+    assert all(len(x) == len(x_batch[0]) for x in x_batch)
 
     # first bit (no and_gate needed)
-    xi, yi = next(x), next(y)
-    ret = [xi + yi - 2*xi*yi]  # xi ^ yi
-    c = xi*yi  # xi & yi
+    # xi ^ yi
+    ret_batch = [[x[0] + y[0] - 2*x[0]*y[0]] for x, y in zip(x_batch, y_batch)]
+    # xi & yi
+    c_batch = [x[0]*y[0] for x, y in zip(x_batch, y_batch)]
 
     # rest of the bits (one and_gate per bit)
-    for xi, yi in zip(x, y):
-        xi_xor_yi = xi + yi - 2*xi*yi
-        r = xi_xor_yi + c - 2*and_gate_batched([xi_xor_yi], [c])[0]
-        c = halve(xi + yi + c - r)
-        ret.append(r)
-    return ret
+    for i in range(1, len(x_batch[0])):
+        xi_xor_yi_batch = [
+            x[i] + y[i] - 2*x[i]*y[i]
+            for x, y in zip(x_batch, y_batch)
+        ]
+        xi_xor_yi_and_c_batch = and_gate_batched(xi_xor_yi_batch, c_batch)
+        for k in range(len(x_batch)):
+            xi_xor_yi = xi_xor_yi_batch[k]
+            xi_xor_yi_and_c = xi_xor_yi_and_c_batch[k]
+            c = c_batch[k]
+            xi = x_batch[k][i]
+            yi = y_batch[k][i]
+
+            r = xi_xor_yi + c - 2*xi_xor_yi_and_c
+            c_batch[k] = halve(xi + yi + c - r)
+            ret_batch[k].append(r)
+    return ret_batch
 
 
 def lsbs(x):
@@ -113,7 +129,7 @@ def lsbs(x):
     y_bits = [(y >> i) & 1 for i in range(n_bits)]
 
     # compute x = y + r using the encrypted bits of r and the clear bits of y
-    return private_add_gate(encrypted_r_bits, y_bits)
+    return private_add_gate_batched([encrypted_r_bits], [y_bits])[0]
 
 
 def conditional_gate_batched(x_batch, y_batch):
