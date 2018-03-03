@@ -288,36 +288,22 @@ doubled_partial_sums_of_candidate = lsbs(doubled_partial_sums_of_candidate)
 
 # compare medians and partial sums to detect which values are left to the
 # best median and which are right to the best median
-is_not_left_to_candidate_median = [
-    gt_gate_batched(
-        doubled_partial_sums_of_candidate[candidate],
-        [total_sum_of_candidate[candidate]]*(n_choices-1)
-    ) + [ONE] for candidate in range(n_candidates)
-]
 is_right_to_candidate_median = [
-    [ZERO] + gt_gate_batched(
+    gt_gate_batched(
         doubled_partial_sums_of_candidate[candidate],
         [total_sum_of_candidate[candidate]]*(n_choices-1)
     ) for candidate in range(n_candidates)
 ]
-is_not_left_to_median = big_and_batched([
-    [
-        is_not_left_to_candidate_median[candidate][choice]
-        for candidate in range(n_candidates)
-    ] for choice in range(n_choices-1)
-]) + [ONE]
-is_left_to_median = [ONE - v for v in is_not_left_to_median]
-is_right_to_median = [ZERO] + big_and_batched([
+is_right_to_median = big_and_batched([
     [
         is_right_to_candidate_median[candidate][choice]
         for candidate in range(n_candidates)
-    ] for choice in range(1, n_choices)
+    ] for choice in range(n_choices-1)
 ])
+is_left_to_median = [ONE - v for v in is_right_to_median]
 
 if debug_level >= 3:
-    print('is_not_left_to_candidate_median =', decrypt(is_not_left_to_candidate_median))
     print('is_right_to_candidate_median =', decrypt(is_right_to_candidate_median))
-    print('is_not_left_to_median =', decrypt(is_not_left_to_median))
     print('is_left_to_median =', decrypt(is_left_to_median))
     print('is_right_to_median =', decrypt(is_right_to_median))
 
@@ -327,12 +313,12 @@ if debug_level >= 3:
 
 # left column
 T_elimination = [
-    sum(and_gate_batched(A[candidate][:-1], is_left_to_median[:-1]))
+    sum(and_gate_batched(A[candidate][:-1], is_left_to_median))
     for candidate in range(n_candidates)
 ]
 # right column
 T_victory = [
-    sum(and_gate_batched(A[candidate][1:], is_right_to_median[1:]))
+    sum(and_gate_batched(A[candidate][1:], is_right_to_median))
     for candidate in range(n_candidates)
 ]
 
