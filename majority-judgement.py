@@ -32,8 +32,8 @@ debug_level = args.debug
 
 n_bits = 11  # NOTE: have enough bits for double partial sums!
 n_parties = 8
-n_conditional_gate = 0
-d_conditional_gate = 0
+n_conditional_gate, d_conditional_gate = 0, 0
+n_random_integer_gate, d_random_integer_gate = 0, 0
 security_parameter = 80
 
 # public_key is used as a global to encrypt constants (0 or 1)
@@ -94,6 +94,16 @@ def private_add_gate_batched(x_batch, y_batch):
     return ret_batch
 
 
+def random_integer_gate_batched(upper_bound_batched):
+    global n_random_integer_gate, d_random_integer_gate
+    n_random_integer_gate += len(upper_bound_batched)
+    d_random_integer_gate += 1
+    return [
+        public_key.encrypt(random.randrange(upper_bound))
+        for upper_bound in upper_bound_batched
+    ]
+
+
 def lsbs_batched(x_batch):
     """LSBs gate, as per ST06
 
@@ -110,10 +120,9 @@ def lsbs_batched(x_batch):
     x_batch = list(x_batch)
 
     # generate r
-    r_batch = [
-        random.randrange(2**(n_bits + security_parameter))
-        for _ in x_batch
-    ]
+    r_batch = random_integer_gate_batched(
+        [2**(n_bits + security_parameter)]*len(x_batch)
+    )
     # the m first bits of r are published encrypted individually
     encrypted_r_bits_batch = [
         [[ZERO, ONE][(r >> i) & 1] for i in range(n_bits)]
@@ -423,3 +432,4 @@ for candidate in range(n_candidates):
 # show calls to oracles
 if debug_level >= 1:
     print('{} conditional gates (depth: {})'.format(n_conditional_gate, d_conditional_gate))
+    print('{} random integer gates (depth: {})'.format(n_random_integer_gate, d_random_integer_gate))
