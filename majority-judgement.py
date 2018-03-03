@@ -31,7 +31,6 @@ args = parser.parse_args()
 debug_level = args.debug
 
 n_bits = 11  # NOTE: have enough bits for double partial sums!
-n_lsbs = 0
 n_parties = 8
 n_conditional_gate = 0
 d_conditional_gate = 0
@@ -108,9 +107,6 @@ def lsbs_batched(x_batch):
     integers...) can be provided and a list (resp. list of list of integers,
     ...) will be returned.
     """
-    global n_lsbs
-    n_lsbs += 1
-
     x_batch = list(x_batch)
 
     # generate r
@@ -419,5 +415,4 @@ for candidate in range(n_candidates):
 
 # show calls to oracles
 if debug_level >= 1:
-    print('{} LSBs invocations'.format(n_lsbs))
     print('{} conditional gates (depth: {})'.format(n_conditional_gate, d_conditional_gate))
