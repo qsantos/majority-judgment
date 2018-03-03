@@ -345,25 +345,29 @@ if debug_level >= 3:
 # at this point, we have built is_left_to_median and is_right_to_median;
 # by multiplying them to the values of A, we can construct T
 
-# left column
-T_elimination = [
-    sum(and_gate_batched(A[candidate][:-1], is_left_to_median))
-    for candidate in range(n_candidates)
-]
-# right column
-T_victory = [
-    sum(and_gate_batched(A[candidate][1:], is_right_to_median))
-    for candidate in range(n_candidates)
+conditioned_terms = and_gate_batched(
+    [
+        A[candidate][choice]
+        for candidate in range(n_candidates)
+        for choice in range(n_choices-1)
+    ] + [
+        A[candidate][choice]
+        for candidate in range(n_candidates)
+        for choice in range(1, n_choices)
+    ],
+    is_left_to_median * n_candidates + is_right_to_median * n_candidates
+)
+T = [
+    sum(conditioned_terms[candidate*(n_choices-1):(candidate+1)*(n_choices-1)])
+    for candidate in range(n_candidates*2)
 ]
 
 if debug_level >= 2:
-    print('T_elimination =', decrypt(T_elimination))
-    print('T_victory =', decrypt(T_victory))
+    print('T =', decrypt(T))
 
-flattened = T_elimination + T_victory # flatten
-flattened = lsbs_batched(flattened)  # switch to binary representation again
+T = lsbs_batched(T)  # switch to binary representation again
 # unflatten
-T_elimination, T_victory = flattened[:n_candidates], flattened[n_candidates:]
+T_elimination, T_victory = T[:n_candidates], T[n_candidates:]
 
 # TODO: more batching of gt_gate
 self_elimination = gt_gate_batched(T_elimination, T_victory)
