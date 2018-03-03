@@ -34,6 +34,7 @@ n_bits = 11  # NOTE: have enough bits for double partial sums!
 n_parties = 8
 n_conditional_gate, d_conditional_gate = 0, 0
 n_random_integer_gate, d_random_integer_gate = 0, 0
+n_random_bit_gate, d_random_bit_gate = 0, 0
 security_parameter = 80
 
 # public_key is used as a global to encrypt constants (0 or 1)
@@ -104,6 +105,13 @@ def random_integer_gate_batched(upper_bound_batched):
     ]
 
 
+def random_bit_gate_batched(count):
+    global n_random_bit_gate, d_random_bit_gate
+    n_random_bit_gate += count
+    d_random_bit_gate += 1
+    return [random.choice([ZERO, ONE]) for _ in range(count)]
+
+
 def lsbs_batched(x_batch):
     """LSBs gate, as per ST06
 
@@ -119,19 +127,25 @@ def lsbs_batched(x_batch):
     """
     x_batch = list(x_batch)
 
-    # generate r
-    r_batch = random_integer_gate_batched(
-        [2**(n_bits + security_parameter)]*len(x_batch)
+    # generate r_*
+    r_star_batch = random_integer_gate_batched(
+        [2**security_parameter]*len(x_batch)
     )
-    # the m first bits of r are published encrypted individually
+    # the n_bits first bits of r are published encrypted individually
+    encrypted_r_bits_flat = random_bit_gate_batched(len(x_batch) * n_bits)
     encrypted_r_bits_batch = [
-        [[ZERO, ONE][(r >> i) & 1] for i in range(n_bits)]
-        for r in r_batch
+        encrypted_r_bits_flat[i*n_bits:(i+1)*n_bits]
+        for i in range(len(x_batch))
+    ]
+    # compute r = r_star 2**n_bits + \sum r_i 2**i
+    r_batch = [
+        r_star * (2**n_bits) + sum(encrypted_r_bits[i] * (2**i) for i in range(n_bits))
+        for r_star, encrypted_r_bits in zip(r_star_batch, encrypted_r_bits_batch)
     ]
 
     # get clear bits of y = x - r
     y_batch = [
-        int(private_key.decrypt(x - public_key.encrypt(r)))
+        int(private_key.decrypt(x - r))
         for x, r in zip(x_batch, r_batch)
     ]
     y_bits_batch = [
@@ -433,3 +447,4 @@ for candidate in range(n_candidates):
 if debug_level >= 1:
     print('{} conditional gates (depth: {})'.format(n_conditional_gate, d_conditional_gate))
     print('{} random integer gates (depth: {})'.format(n_random_integer_gate, d_random_integer_gate))
+    print('{} random bit gates (depth: {})'.format(n_random_bit_gate, d_random_bit_gate))
