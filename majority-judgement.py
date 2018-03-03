@@ -108,14 +108,6 @@ def lsbs(x):
     integers...) can be provided and a list (resp. list of list of integers,
     ...) will be returned.
     """
-    # overload for iterables
-    try:
-        x = iter(x)
-    except TypeError:
-        pass
-    else:
-        return [lsbs(value) for value in x]
-
     global n_lsbs
     n_lsbs += 1
 
@@ -299,8 +291,11 @@ if debug_level >= 3:
     print('doubled_partial_sums_of_candidate =', decrypt(doubled_partial_sums_of_candidate))
 
 # switch to binary representation
-total_sum_of_candidate = lsbs(total_sum_of_candidate)
-doubled_partial_sums_of_candidate = lsbs(doubled_partial_sums_of_candidate)
+total_sum_of_candidate = [lsbs(x) for x in total_sum_of_candidate]
+doubled_partial_sums_of_candidate = [
+    [lsbs(x) for x in row]
+    for row in doubled_partial_sums_of_candidate
+]
 
 # compare medians and partial sums to detect which values are left to the
 # best median and which are right to the best median
@@ -343,8 +338,8 @@ if debug_level >= 2:
     print('T_victory =', decrypt(T_victory))
 
 # now that we have T, we switch to binary representation again
-T_elimination = lsbs(T_elimination)
-T_victory = lsbs(T_victory)
+T_elimination = [lsbs(x) for x in T_elimination]
+T_victory = [lsbs(x) for x in T_victory]
 # here, the output could be El Gamal or BGN ciphers instead
 
 # TODO: more batching of gt_gate
