@@ -368,21 +368,28 @@ T_elimination, T_victory = T[:n_candidates], T[n_candidates:]
 left_challenger = [
     T_victory[candidate]
     for candidate in range(n_candidates)
-    for _ in range(n_candidates)
+    for other_candidate in range(candidate)
 ]
-right_challenger = T_victory * n_candidates
+right_challenger = [
+    T_victory[other_candidate]
+    for candidate in range(n_candidates)
+    for other_candidate in range(candidate)
+]
 # batch together comparisons for self-elimination and for challenges
 comparisons = gt_gate_batched(
     T_elimination + left_challenger,
     T_victory + right_challenger
 )
-# unbatch, unflatten
 self_elimination = comparisons[:n_candidates]
-challenges = comparisons[n_candidates:]
-challenges = [
-    challenges[candidate*n_candidates:(candidate+1)*n_candidates]
-    for candidate in range(n_candidates)
-]
+# extend triangular comparison matrix to full matrix
+challenges = [[None]*n_candidates for _ in range(n_candidates)]
+i_comparison = n_candidates
+for candidate in range(n_candidates):
+    for other_candidate in range(candidate):
+        comparison = comparisons[i_comparison]
+        challenges[candidate][other_candidate] = comparison
+        challenges[other_candidate][candidate] = ONE - comparison
+        i_comparison += 1
 
 # batch challenge results (either challenge happened and was lost)
 challenge_results = and_gate_batched(
