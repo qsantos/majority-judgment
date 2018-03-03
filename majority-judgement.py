@@ -184,7 +184,7 @@ def big_and_batched(bits_batch):
     return [bits[0] for bits in bits_batch]
 
 
-def gt_gate(x, y):
+def gt_gate_batched(x_batch, y_batch):
     """Greater-than gate, as per ST04
 
     Practical Two-Party Computation Based on the Conditional Gate
@@ -194,22 +194,53 @@ def gt_gate(x, y):
         y is an encryption of an integer
         returns 1 if x > y else 0
     """
-    x, y = list(x), list(y)
+    x_batch = [list(x) for x in x_batch]
+    y_batch = [list(y) for y in y_batch]
+    assert len(x_batch) == len(y_batch)
+    assert all(len(x) == len(y) for x, y in zip(x_batch, y_batch))
+    # not strictly necessary but makes the code easier
+    assert all(len(x) == len(x_batch[0]) for x in x_batch)
+
+    length_batch = [len(x) for x in x_batch]
+
+    # flatten
+    x_flat = [bit for x in x_batch for bit in x]
+    y_flat = [bit for y in y_batch for bit in y]
 
     # first, compute all xi & yi in batch
-    x_and_y = and_gate_batched(x, y)
+    x_and_y_flat = and_gate_batched(x_flat, y_flat)
+
+    # unflatten
+    x_and_y_batch = []
+    total = 0
+    for length in length_batch:
+        x_and_y_batch.append(x_and_y_flat[total:total+length])
+        total += length
 
     # first bit (only one and_gate needed)
-    ti = x[0] - x_and_y[0]
+    ti_batch = [x[0] - x_and_y[0] for x, x_and_y in zip(x_batch, x_and_y_batch)]
 
     # rest of the bits (two and_gate per bit)
-    for xi, yi, xi_and_yi in zip(x, y, x_and_y):
+    for i in range(1, len(x_batch[0])):
         # ti = (1 - (xi - yi)**2) * ti + xi*(1-yi)
         #    = (1 - xi - yi + 2 xi yi) ti + xi - xi yi
-        ti = and_gate_batched([1 - xi - yi + 2*xi_and_yi], [ti])[0] + xi - xi_and_yi
+        parenthesis_batch = [
+            1 - x[i] - y[i] + 2*x_and_y[i]
+            for x, y, x_and_y in zip(x_batch, y_batch, x_and_y_batch)
+        ]
+        left_hand_addition_batch = and_gate_batched(parenthesis_batch, ti_batch)
+        ti_batch = [
+            left_hand_addition + x[i] - x_and_y[i]
+            for left_hand_addition, x, x_and_y in zip(left_hand_addition_batch, x_batch, x_and_y_batch)
+        ]
+        # we exploit the fact that all the integers to compare are of the same
+        # length, otherwise, we would need to keep track of whose bits are
+        # being sent to the and_gate
+
     if debug_level >= 4:
-        print('{} > {} -> {}'.format(decrypt(x), decrypt(y), decrypt(ti)))
-    return ti
+        for x, y, ti in zip(x_batch, y_batch, ti_batch):
+            print('{} > {} -> {}'.format(decrypt(x), decrypt(y), decrypt(ti)))
+    return ti_batch
 
 
 def decrypt(x):
@@ -258,20 +289,16 @@ doubled_partial_sums_of_candidate = lsbs(doubled_partial_sums_of_candidate)
 # compare medians and partial sums to detect which values are left to the
 # best median and which are right to the best median
 is_not_left_to_candidate_median = [
-    [
-        gt_gate(
-            doubled_partial_sums_of_candidate[candidate][choice],
-            total_sum_of_candidate[candidate]
-        ) for choice in range(n_choices-1)
-    ] + [ONE] for candidate in range(n_candidates)
+    gt_gate_batched(
+        doubled_partial_sums_of_candidate[candidate],
+        [total_sum_of_candidate[candidate]]*(n_choices-1)
+    ) + [ONE] for candidate in range(n_candidates)
 ]
 is_right_to_candidate_median = [
-    [ZERO] + [
-        gt_gate(
-            doubled_partial_sums_of_candidate[candidate][choice],
-            total_sum_of_candidate[candidate]
-        ) for choice in range(n_choices-1)
-    ] for candidate in range(n_candidates)
+    [ZERO] + gt_gate_batched(
+        doubled_partial_sums_of_candidate[candidate],
+        [total_sum_of_candidate[candidate]]*(n_choices-1)
+    ) for candidate in range(n_candidates)
 ]
 is_not_left_to_median = big_and_batched([
     [
@@ -318,21 +345,23 @@ T_elimination = lsbs(T_elimination)
 T_victory = lsbs(T_victory)
 # here, the output could be El Gamal or BGN ciphers instead
 
+# TODO: more batching of gt_gate
+self_elimination = gt_gate_batched(T_elimination, T_victory)
+
 # and now, it only remain to find the winner using the explicit formula
 for candidate in range(n_candidates):
     # explicit formula (sum of simple ands version)
-    lose = gt_gate(T_elimination[candidate], T_victory[candidate]) + sum(
+    lose = self_elimination[candidate] + sum(
         and_gate_batched(
             [
-                gt_gate(T_victory[other_candidate], T_elimination[other_candidate])
+                ONE - self_elimination[other_candidate]
                 for other_candidate in range(n_candidates)
                 if other_candidate != candidate
             ],
-            [
-                gt_gate(T_victory[other_candidate], T_victory[candidate])
-                for other_candidate in range(n_candidates)
-                if other_candidate != candidate
-            ]
+            gt_gate_batched(
+                T_victory[:candidate] + T_victory[candidate+1:],
+                [T_victory[candidate]]*(n_candidates-1)
+            )
         )
     )
 
