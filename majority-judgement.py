@@ -388,22 +388,27 @@ challenges = [
     for candidate in range(n_candidates)
 ]
 
+# batch challenge results (either challenge happened and was lost)
+challenge_results = and_gate_batched(
+    [
+        ONE - self_elimination[other_candidate]
+        for candidate in range(n_candidates)
+        for other_candidate in range(n_candidates)
+        if other_candidate != candidate
+    ],
+    [
+        challenges[candidate][other_candidate]
+        for candidate in range(n_candidates)
+        for other_candidate in range(n_candidates)
+        if other_candidate != candidate
+    ]
+)
+
 # and now, it only remain to find the winner using the explicit formula
 for candidate in range(n_candidates):
     # explicit formula (sum of simple ands version)
     lose = self_elimination[candidate] + sum(
-        and_gate_batched(
-            [
-                ONE - self_elimination[other_candidate]
-                for other_candidate in range(n_candidates)
-                if other_candidate != candidate
-            ],
-            [
-                challenges[candidate][other_candidate]
-                for other_candidate in range(n_candidates)
-                if other_candidate != candidate
-            ]
-        )
+        challenge_results[candidate*(n_candidates-1):(candidate+1)*(n_candidates-1)]
     )
 
     # reveal whether the result is null or not
