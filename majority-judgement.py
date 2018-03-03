@@ -95,7 +95,7 @@ def private_add_gate_batched(x_batch, y_batch):
     return ret_batch
 
 
-def lsbs(x):
+def lsbs_batched(x_batch):
     """LSBs gate, as per ST06
 
     Efficient Binary Conversion for Paillier Encrypted Values
@@ -111,17 +111,31 @@ def lsbs(x):
     global n_lsbs
     n_lsbs += 1
 
+    x_batch = list(x_batch)
+
     # generate r
-    r = random.randrange(2**(n_bits + security_parameter))
+    r_batch = [
+        random.randrange(2**(n_bits + security_parameter))
+        for _ in x_batch
+    ]
     # the m first bits of r are published encrypted individually
-    encrypted_r_bits = [[ZERO, ONE][(r >> i) & 1] for i in range(n_bits)]
+    encrypted_r_bits_batch = [
+        [[ZERO, ONE][(r >> i) & 1] for i in range(n_bits)]
+        for r in r_batch
+    ]
 
     # get clear bits of y = x - r
-    y = int(private_key.decrypt(x - public_key.encrypt(r)))
-    y_bits = [(y >> i) & 1 for i in range(n_bits)]
+    y_batch = [
+        int(private_key.decrypt(x - public_key.encrypt(r)))
+        for x, r in zip(x_batch, r_batch)
+    ]
+    y_bits_batch = [
+        [(y >> i) & 1 for i in range(n_bits)]
+        for y in y_batch
+    ]
 
     # compute x = y + r using the encrypted bits of r and the clear bits of y
-    return private_add_gate_batched([encrypted_r_bits], [y_bits])[0]
+    return private_add_gate_batched(encrypted_r_bits_batch, y_bits_batch)
 
 
 def conditional_gate_batched(x_batch, y_batch):
@@ -291,10 +305,9 @@ if debug_level >= 3:
     print('doubled_partial_sums_of_candidate =', decrypt(doubled_partial_sums_of_candidate))
 
 # switch to binary representation
-total_sum_of_candidate = [lsbs(x) for x in total_sum_of_candidate]
+total_sum_of_candidate = lsbs_batched(total_sum_of_candidate)
 doubled_partial_sums_of_candidate = [
-    [lsbs(x) for x in row]
-    for row in doubled_partial_sums_of_candidate
+    lsbs_batched(row) for row in doubled_partial_sums_of_candidate
 ]
 
 # compare medians and partial sums to detect which values are left to the
@@ -338,8 +351,8 @@ if debug_level >= 2:
     print('T_victory =', decrypt(T_victory))
 
 # now that we have T, we switch to binary representation again
-T_elimination = [lsbs(x) for x in T_elimination]
-T_victory = [lsbs(x) for x in T_victory]
+T_elimination = lsbs_batched(T_elimination)
+T_victory = lsbs_batched(T_victory)
 # here, the output could be El Gamal or BGN ciphers instead
 
 # TODO: more batching of gt_gate
