@@ -369,17 +369,20 @@ T = lsbs_batched(T)  # switch to binary representation again
 # unflatten
 T_elimination, T_victory = T[:n_candidates], T[n_candidates:]
 
-# TODO: more batching of gt_gate
-self_elimination = gt_gate_batched(T_elimination, T_victory)
-
 left_challenger = [
     T_victory[candidate]
     for candidate in range(n_candidates)
     for _ in range(n_candidates)
 ]
 right_challenger = T_victory * n_candidates
-challenges = gt_gate_batched(left_challenger, right_challenger)
-# unflatten
+# batch together comparisons for self-elimination and for challenges
+comparisons = gt_gate_batched(
+    T_elimination + left_challenger,
+    T_victory + right_challenger
+)
+# unbatch, unflatten
+self_elimination = comparisons[:n_candidates]
+challenges = comparisons[n_candidates:]
 challenges = [
     challenges[candidate*n_candidates:(candidate+1)*n_candidates]
     for candidate in range(n_candidates)
