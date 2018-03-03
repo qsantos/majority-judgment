@@ -304,10 +304,17 @@ if debug_level >= 3:
     print('total_sum_of_candidate =', decrypt(total_sum_of_candidate))
     print('doubled_partial_sums_of_candidate =', decrypt(doubled_partial_sums_of_candidate))
 
+# flatten total_sum_of_candidate and doubled_partial_sums_of_candidate together
+flattened = total_sum_of_candidate + \
+    [x for row in doubled_partial_sums_of_candidate for x in row]
 # switch to binary representation
-total_sum_of_candidate = lsbs_batched(total_sum_of_candidate)
-doubled_partial_sums_of_candidate = [
-    lsbs_batched(row) for row in doubled_partial_sums_of_candidate
+flattened = lsbs_batched(flattened)
+# unflatten
+total_sum_of_candidate = flattened[:n_candidates]
+flattened = flattened[n_candidates:]  # skip first elements
+doubled_partial_sums_of_candidate = [  # into matrix
+    flattened[i*(n_choices-1):(i+1)*(n_choices-1)]
+    for i in range(n_candidates)
 ]
 
 # compare medians and partial sums to detect which values are left to the
@@ -350,10 +357,10 @@ if debug_level >= 2:
     print('T_elimination =', decrypt(T_elimination))
     print('T_victory =', decrypt(T_victory))
 
-# now that we have T, we switch to binary representation again
-T_elimination = lsbs_batched(T_elimination)
-T_victory = lsbs_batched(T_victory)
-# here, the output could be El Gamal or BGN ciphers instead
+flattened = T_elimination + T_victory # flatten
+flattened = lsbs_batched(flattened)  # switch to binary representation again
+# unflatten
+T_elimination, T_victory = flattened[:n_candidates], flattened[n_candidates:]
 
 # TODO: more batching of gt_gate
 self_elimination = gt_gate_batched(T_elimination, T_victory)
