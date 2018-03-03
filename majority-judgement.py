@@ -311,19 +311,22 @@ flattened = total_sum_of_candidate + \
 flattened = lsbs_batched(flattened)
 # unflatten
 total_sum_of_candidate = flattened[:n_candidates]
-flattened = flattened[n_candidates:]  # skip first elements
-doubled_partial_sums_of_candidate = [  # into matrix
-    flattened[i*(n_choices-1):(i+1)*(n_choices-1)]
-    for i in range(n_candidates)
-]
+doubled_partial_sums_of_candidate = flattened[n_candidates:]
 
 # compare medians and partial sums to detect which values are left to the
 # best median and which are right to the best median
+is_right_to_candidate_median = gt_gate_batched(
+    doubled_partial_sums_of_candidate,  # already flattened
+    [
+        total_sum_of_candidate[candidate]
+        for candidate in range(n_candidates)
+        for _ in range(n_choices-1)
+    ]
+)
+# unflatten
 is_right_to_candidate_median = [
-    gt_gate_batched(
-        doubled_partial_sums_of_candidate[candidate],
-        [total_sum_of_candidate[candidate]]*(n_choices-1)
-    ) for candidate in range(n_candidates)
+    is_right_to_candidate_median[candidate*(n_choices-1):(candidate+1)*(n_choices-1)]
+    for candidate in range(n_candidates)
 ]
 is_right_to_median = big_and_batched([
     [
@@ -365,6 +368,19 @@ T_elimination, T_victory = flattened[:n_candidates], flattened[n_candidates:]
 # TODO: more batching of gt_gate
 self_elimination = gt_gate_batched(T_elimination, T_victory)
 
+left_challenger = [
+    T_victory[candidate]
+    for candidate in range(n_candidates)
+    for _ in range(n_candidates)
+]
+right_challenger = T_victory * n_candidates
+challenges = gt_gate_batched(left_challenger, right_challenger)
+# unflatten
+challenges = [
+    challenges[candidate*n_candidates:(candidate+1)*n_candidates]
+    for candidate in range(n_candidates)
+]
+
 # and now, it only remain to find the winner using the explicit formula
 for candidate in range(n_candidates):
     # explicit formula (sum of simple ands version)
@@ -375,10 +391,11 @@ for candidate in range(n_candidates):
                 for other_candidate in range(n_candidates)
                 if other_candidate != candidate
             ],
-            gt_gate_batched(
-                T_victory[:candidate] + T_victory[candidate+1:],
-                [T_victory[candidate]]*(n_candidates-1)
-            )
+            [
+                challenges[candidate][other_candidate]
+                for other_candidate in range(n_candidates)
+                if other_candidate != candidate
+            ]
         )
     )
 
