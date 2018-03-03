@@ -35,6 +35,7 @@ n_parties = 8
 n_conditional_gate, d_conditional_gate = 0, 0
 n_random_integer_gate, d_random_integer_gate = 0, 0
 n_random_bit_gate, d_random_bit_gate = 0, 0
+n_decrypt_gate, d_decrypt_gate = 0, 0
 security_parameter = 80
 
 # public_key is used as a global to encrypt constants (0 or 1)
@@ -112,6 +113,13 @@ def random_bit_gate_batched(count):
     return [random.choice([ZERO, ONE]) for _ in range(count)]
 
 
+def decrypt_gate_batched(x_batch):
+    global n_decrypt_gate, d_decrypt_gate
+    n_decrypt_gate += len(x_batch)
+    d_decrypt_gate += 1
+    return [int(private_key.decrypt(x)) for x in x_batch]
+
+
 def lsbs_batched(x_batch):
     """LSBs gate, as per ST06
 
@@ -144,10 +152,7 @@ def lsbs_batched(x_batch):
     ]
 
     # get clear bits of y = x - r
-    y_batch = [
-        int(private_key.decrypt(x - r))
-        for x, r in zip(x_batch, r_batch)
-    ]
+    y_batch = decrypt_gate_batched([x - r for x, r in zip(x_batch, r_batch)])
     y_bits_batch = [
         [(y >> i) & 1 for i in range(n_bits)]
         for y in y_batch
@@ -179,7 +184,8 @@ def conditional_gate_batched(x_batch, y_batch):
             r = random.choice([-1, 1])
             x_batch[i] *= r
             y_batch[i] *= r
-    return [x * private_key.decrypt(y) for x, y in zip(x_batch, y_batch)]
+    clear_y_batch = decrypt_gate_batched(y_batch)
+    return [x * clear_y for x, clear_y in zip(x_batch, clear_y_batch)]
 
 
 def and_gate_batched(x_batch, y_batch):
@@ -430,17 +436,23 @@ challenge_results = and_gate_batched(
     ]
 )
 
-# and now, it only remain to find the winner using the explicit formula
-for candidate in range(n_candidates):
-    # explicit formula (sum of simple ands version)
-    lose = self_elimination[candidate] + sum(
+# explicit formula (sum of simple ands version)
+lose_batch = [
+    self_elimination[candidate] + sum(
         challenge_results[candidate*(n_candidates-1):(candidate+1)*(n_candidates-1)]
     )
+    for candidate in range(n_candidates)
+]
 
+# reveal whether lose is null or not (masking with random number)
+r_batch = random_integer_gate_batched([2**n_bits]*n_candidates)
+clear_lose_batch = decrypt_gate_batched([
+    lose * r for lose, r in zip(lose_batch, r_batch)
+])
+
+for candidate, clear_lose in enumerate(clear_lose_batch):
     # reveal whether the result is null or not
-    r = random.randrange(2**n_bits)  # should be secure random
-    has_won = private_key.decrypt(lose * r) == 0
-    if debug_level >= 1 and has_won:
+    if debug_level >= 1 and clear_lose == 0:
         print('Candidate {} wins!'.format(candidate))
 
 # show calls to oracles
@@ -448,3 +460,4 @@ if debug_level >= 1:
     print('{} conditional gates (depth: {})'.format(n_conditional_gate, d_conditional_gate))
     print('{} random integer gates (depth: {})'.format(n_random_integer_gate, d_random_integer_gate))
     print('{} random bit gates (depth: {})'.format(n_random_bit_gate, d_random_bit_gate))
+    print('{} decrypt gates (depth: {})'.format(n_decrypt_gate, d_decrypt_gate))
