@@ -287,6 +287,8 @@ def gt_gate_batched(x_batch, y_batch):
 
 def decrypt(x):
     """Debug helper: decrypt values, lists of values, lists of lists, ..."""
+    if x is None:
+        return None
     try:
         x = iter(x)
     except TypeError:
@@ -415,6 +417,10 @@ def compute_winner(T):
             challenges[other_candidate][candidate] = ONE - comparison
             i_comparison += 1
 
+    if debug_level >= 3:
+        print('comparisons =', decrypt(comparisons))
+        print('challenges =', decrypt(challenges))
+
     # batch challenge results (either challenge happened and was lost)
     challenge_results = and_gate_batched(
         [
@@ -431,6 +437,9 @@ def compute_winner(T):
         ]
     )
 
+    if debug_level >= 3:
+        print('challenge_results =', decrypt(challenge_results))
+
     # explicit formula (sum of simple ands version)
     lose_batch = [
         self_elimination[candidate] + sum(
@@ -439,11 +448,17 @@ def compute_winner(T):
         for candidate in range(n_candidates)
     ]
 
+    if debug_level >= 3:
+        print('lose_batch =', decrypt(lose_batch))
+
     # reveal whether lose is null or not (masking with random number)
     r_batch = random_integer_gate_batched([2**n_bits]*n_candidates)
     clear_lose_batch = decrypt_gate_batched([
         lose * r for lose, r in zip(lose_batch, r_batch)
     ])
+
+    if debug_level >= 2:
+        print('clear_lose_batch =', clear_lose_batch)
 
     for candidate, clear_lose in enumerate(clear_lose_batch):
         # reveal whether the result is null or not
