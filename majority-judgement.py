@@ -18,17 +18,12 @@ import argparse
 
 import phe
 
-parser = argparse.ArgumentParser()
-parser.description = 'Run majority judgement protocol using Paillier encrption'
-parser.add_argument('--debug', '-d', default=1, type=int)
-args = parser.parse_args()
-
 # debug_level = 0: quiet
 # debug_level = 1: normal output
 # debug_level = 2: some intermediate values
 # debug_level = 3: detailed intermediate values
 # debug_level = 4: all comparisons as well
-debug_level = args.debug
+debug_level = 1
 
 n_bits = 11  # NOTE: have enough bits for double partial sums!
 n_parties = 8
@@ -301,163 +296,192 @@ def decrypt(x):
     return private_key.decrypt(x)
 
 
-# assume that A has been computed as the sum of the individual ballots
-clear_A = [
-    [12, 68, 417, 104, 28],
-    [7, 99, 221, 71, 29],
-    [301, 107, 58, 16, 2],
-]
-A = [[public_key.encrypt(value) for value in row] for row in clear_A]
-# not very Pythonic but let's keep it simple for now
-n_candidates = len(A)
-n_choices = len(A[0])
+def compute_is_left_right_to_median(A):
+    # not very Pythonic but let's keep it simple for now
+    n_candidates = len(A)
+    n_choices = len(A[0])
 
-total_sum_of_candidate = [sum(row) for row in A]
-doubled_partial_sums_of_candidate = [
-    [2*sum(row[:j]) for j in range(1, len(row))]
-    for row in A
-]
-
-assert len(total_sum_of_candidate) == n_candidates
-assert len(doubled_partial_sums_of_candidate) == n_candidates
-assert len(doubled_partial_sums_of_candidate[0]) == n_choices-1
-
-if debug_level >= 2:
-    print('A =', decrypt(A))
-
-if debug_level >= 3:
-    print('total_sum_of_candidate =', decrypt(total_sum_of_candidate))
-    print('doubled_partial_sums_of_candidate =', decrypt(doubled_partial_sums_of_candidate))
-
-# flatten total_sum_of_candidate and doubled_partial_sums_of_candidate together
-flattened = total_sum_of_candidate + \
-    [x for row in doubled_partial_sums_of_candidate for x in row]
-# switch to binary representation
-flattened = lsbs_batched(flattened)
-# unflatten
-total_sum_of_candidate = flattened[:n_candidates]
-doubled_partial_sums_of_candidate = flattened[n_candidates:]
-
-# compare medians and partial sums to detect which values are left to the
-# best median and which are right to the best median
-is_right_to_candidate_median = gt_gate_batched(
-    doubled_partial_sums_of_candidate,  # already flattened
-    [
-        total_sum_of_candidate[candidate]
-        for candidate in range(n_candidates)
-        for _ in range(n_choices-1)
+    total_sum_of_candidate = [sum(row) for row in A]
+    doubled_partial_sums_of_candidate = [
+        [2*sum(row[:j]) for j in range(1, len(row))]
+        for row in A
     ]
-)
-# unflatten
-is_right_to_candidate_median = [
-    is_right_to_candidate_median[candidate*(n_choices-1):(candidate+1)*(n_choices-1)]
-    for candidate in range(n_candidates)
-]
-is_right_to_median = big_and_batched([
-    [
-        is_right_to_candidate_median[candidate][choice]
-        for candidate in range(n_candidates)
-    ] for choice in range(n_choices-1)
-])
-is_left_to_median = [ONE - v for v in is_right_to_median]
 
-if debug_level >= 3:
-    print('is_right_to_candidate_median =', decrypt(is_right_to_candidate_median))
-    print('is_left_to_median =', decrypt(is_left_to_median))
-    print('is_right_to_median =', decrypt(is_right_to_median))
+    if debug_level >= 2:
+        print('A =', decrypt(A))
 
+    if debug_level >= 3:
+        print('total_sum_of_candidate =', decrypt(total_sum_of_candidate))
+        print('doubled_partial_sums_of_candidate =', decrypt(doubled_partial_sums_of_candidate))
 
-# at this point, we have built is_left_to_median and is_right_to_median;
-# by multiplying them to the values of A, we can construct T
+    # flatten total_sum_of_candidate and doubled_partial_sums_of_candidate together
+    flattened = total_sum_of_candidate + \
+        [x for row in doubled_partial_sums_of_candidate for x in row]
+    # switch to binary representation
+    flattened = lsbs_batched(flattened)
+    # unflatten
+    total_sum_of_candidate = flattened[:n_candidates]
+    doubled_partial_sums_of_candidate = flattened[n_candidates:]
 
-conditioned_terms = and_gate_batched(
-    [
-        A[candidate][choice]
-        for candidate in range(n_candidates)
-        for choice in range(n_choices-1)
-    ] + [
-        A[candidate][choice]
-        for candidate in range(n_candidates)
-        for choice in range(1, n_choices)
-    ],
-    is_left_to_median * n_candidates + is_right_to_median * n_candidates
-)
-T = [
-    sum(conditioned_terms[candidate*(n_choices-1):(candidate+1)*(n_choices-1)])
-    for candidate in range(n_candidates*2)
-]
-
-if debug_level >= 2:
-    print('T =', decrypt(T))
-
-T = lsbs_batched(T)  # switch to binary representation again
-# unflatten
-T_elimination, T_victory = T[:n_candidates], T[n_candidates:]
-
-left_challenger = [
-    T_victory[candidate]
-    for candidate in range(n_candidates)
-    for other_candidate in range(candidate)
-]
-right_challenger = [
-    T_victory[other_candidate]
-    for candidate in range(n_candidates)
-    for other_candidate in range(candidate)
-]
-# batch together comparisons for self-elimination and for challenges
-comparisons = gt_gate_batched(
-    T_elimination + left_challenger,
-    T_victory + right_challenger
-)
-self_elimination = comparisons[:n_candidates]
-# extend triangular comparison matrix to full matrix
-challenges = [[None]*n_candidates for _ in range(n_candidates)]
-i_comparison = n_candidates
-for candidate in range(n_candidates):
-    for other_candidate in range(candidate):
-        comparison = comparisons[i_comparison]
-        challenges[candidate][other_candidate] = comparison
-        challenges[other_candidate][candidate] = ONE - comparison
-        i_comparison += 1
-
-# batch challenge results (either challenge happened and was lost)
-challenge_results = and_gate_batched(
-    [
-        ONE - self_elimination[other_candidate]
-        for candidate in range(n_candidates)
-        for other_candidate in range(n_candidates)
-        if other_candidate != candidate
-    ],
-    [
-        challenges[candidate][other_candidate]
-        for candidate in range(n_candidates)
-        for other_candidate in range(n_candidates)
-        if other_candidate != candidate
-    ]
-)
-
-# explicit formula (sum of simple ands version)
-lose_batch = [
-    self_elimination[candidate] + sum(
-        challenge_results[candidate*(n_candidates-1):(candidate+1)*(n_candidates-1)]
+    # compare medians and partial sums to detect which values are left to the
+    # best median and which are right to the best median
+    is_right_to_candidate_median = gt_gate_batched(
+        doubled_partial_sums_of_candidate,  # already flattened
+        [
+            total_sum_of_candidate[candidate]
+            for candidate in range(n_candidates)
+            for _ in range(n_choices-1)
+        ]
     )
-    for candidate in range(n_candidates)
-]
+    # unflatten
+    is_right_to_candidate_median = [
+        is_right_to_candidate_median[candidate*(n_choices-1):(candidate+1)*(n_choices-1)]
+        for candidate in range(n_candidates)
+    ]
+    is_right_to_median = big_and_batched([
+        [
+            is_right_to_candidate_median[candidate][choice]
+            for candidate in range(n_candidates)
+        ] for choice in range(n_choices-1)
+    ])
+    is_left_to_median = [ONE - v for v in is_right_to_median]
 
-# reveal whether lose is null or not (masking with random number)
-r_batch = random_integer_gate_batched([2**n_bits]*n_candidates)
-clear_lose_batch = decrypt_gate_batched([
-    lose * r for lose, r in zip(lose_batch, r_batch)
-])
+    if debug_level >= 3:
+        print('is_right_to_candidate_median =', decrypt(is_right_to_candidate_median))
+        print('is_left_to_median =', decrypt(is_left_to_median))
+        print('is_right_to_median =', decrypt(is_right_to_median))
 
-for candidate, clear_lose in enumerate(clear_lose_batch):
-    # reveal whether the result is null or not
-    if debug_level >= 1 and clear_lose == 0:
-        print('Candidate {} wins!'.format(candidate))
+    return is_left_to_median, is_right_to_median
 
-# show calls to oracles
-if debug_level >= 1:
-    print('{} conditional gates (depth: {})'.format(n_conditional_gate, d_conditional_gate))
-    print('{} random integer gates (depth: {})'.format(n_random_integer_gate, d_random_integer_gate))
-    print('{} random bit gates (depth: {})'.format(n_random_bit_gate, d_random_bit_gate))
-    print('{} decrypt gates (depth: {})'.format(n_decrypt_gate, d_decrypt_gate))
+
+def compute_T(A, is_left_to_median, is_right_to_median):
+    # not very Pythonic but let's keep it simple for now
+    n_candidates = len(A)
+    n_choices = len(A[0])
+
+    conditioned_terms = and_gate_batched(
+        [
+            A[candidate][choice]
+            for candidate in range(n_candidates)
+            for choice in range(n_choices-1)
+        ] + [
+            A[candidate][choice]
+            for candidate in range(n_candidates)
+            for choice in range(1, n_choices)
+        ],
+        is_left_to_median * n_candidates + is_right_to_median * n_candidates
+    )
+    T = [
+        sum(conditioned_terms[candidate*(n_choices-1):(candidate+1)*(n_choices-1)])
+        for candidate in range(n_candidates*2)
+    ]
+
+    if debug_level >= 2:
+        print('T =', decrypt(T))
+
+    return T
+
+
+def compute_winner(T):
+    assert len(T) % 2 == 0
+    # not very Pythonic but let's keep it simple for now
+    n_candidates = len(T) // 2
+
+    T_elimination, T_victory = T[:n_candidates], T[n_candidates:]
+
+    left_challenger = [
+        T_victory[candidate]
+        for candidate in range(n_candidates)
+        for other_candidate in range(candidate)
+    ]
+    right_challenger = [
+        T_victory[other_candidate]
+        for candidate in range(n_candidates)
+        for other_candidate in range(candidate)
+    ]
+    # batch together comparisons for self-elimination and for challenges
+    comparisons = gt_gate_batched(
+        T_elimination + left_challenger,
+        T_victory + right_challenger
+    )
+    self_elimination = comparisons[:n_candidates]
+    # extend triangular comparison matrix to full matrix
+    challenges = [[None]*n_candidates for _ in range(n_candidates)]
+    i_comparison = n_candidates
+    for candidate in range(n_candidates):
+        for other_candidate in range(candidate):
+            comparison = comparisons[i_comparison]
+            challenges[candidate][other_candidate] = comparison
+            challenges[other_candidate][candidate] = ONE - comparison
+            i_comparison += 1
+
+    # batch challenge results (either challenge happened and was lost)
+    challenge_results = and_gate_batched(
+        [
+            ONE - self_elimination[other_candidate]
+            for candidate in range(n_candidates)
+            for other_candidate in range(n_candidates)
+            if other_candidate != candidate
+        ],
+        [
+            challenges[candidate][other_candidate]
+            for candidate in range(n_candidates)
+            for other_candidate in range(n_candidates)
+            if other_candidate != candidate
+        ]
+    )
+
+    # explicit formula (sum of simple ands version)
+    lose_batch = [
+        self_elimination[candidate] + sum(
+            challenge_results[candidate*(n_candidates-1):(candidate+1)*(n_candidates-1)]
+        )
+        for candidate in range(n_candidates)
+    ]
+
+    # reveal whether lose is null or not (masking with random number)
+    r_batch = random_integer_gate_batched([2**n_bits]*n_candidates)
+    clear_lose_batch = decrypt_gate_batched([
+        lose * r for lose, r in zip(lose_batch, r_batch)
+    ])
+
+    for candidate, clear_lose in enumerate(clear_lose_batch):
+        # reveal whether the result is null or not
+        if debug_level >= 1 and clear_lose == 0:
+            print('Candidate {} wins!'.format(candidate))
+
+
+def run_majority_judgement(A):
+    is_left_to_median, is_right_to_median = compute_is_left_right_to_median(A)
+    T = compute_T(A, is_left_to_median, is_right_to_median)
+    T = lsbs_batched(T)  # switch to binary representation again
+    compute_winner(T)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.description = 'Run majority judgement protocol using Paillier encrption'
+    parser.add_argument('--debug', '-d', default=1, type=int)
+    args = parser.parse_args()
+
+    global debug_level
+    debug_level = args.debug
+
+    clear_A = [
+        [12, 68, 417, 104, 28],
+        [7, 99, 221, 71, 29],
+        [301, 107, 58, 16, 2],
+    ]
+    A = [[public_key.encrypt(value) for value in row] for row in clear_A]
+    run_majority_judgement(A)
+
+    # show calls to oracles
+    if debug_level >= 1:
+        print('{} conditional gates (depth: {})'.format(n_conditional_gate, d_conditional_gate))
+        print('{} random integer gates (depth: {})'.format(n_random_integer_gate, d_random_integer_gate))
+        print('{} random bit gates (depth: {})'.format(n_random_bit_gate, d_random_bit_gate))
+        print('{} decrypt gates (depth: {})'.format(n_decrypt_gate, d_decrypt_gate))
+
+
+if __name__ == '__main__':
+    main()
