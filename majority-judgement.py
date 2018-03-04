@@ -460,17 +460,18 @@ def compute_winner(T):
     if debug_level >= 2:
         print('clear_lose_batch =', clear_lose_batch)
 
-    for candidate, clear_lose in enumerate(clear_lose_batch):
-        # reveal whether the result is null or not
-        if debug_level >= 1 and clear_lose == 0:
-            print('Candidate {} wins!'.format(candidate))
+    assert clear_lose_batch.count(0) <= 1
+    if 0 in clear_lose_batch:
+        return clear_lose_batch.index(0)
+    else:
+        return None
 
 
 def run_majority_judgement(A):
     is_left_to_median, is_right_to_median = compute_is_left_right_to_median(A)
     T = compute_T(A, is_left_to_median, is_right_to_median)
     T = lsbs_batched(T)  # switch to binary representation again
-    compute_winner(T)
+    return compute_winner(T)
 
 
 def main():
@@ -488,7 +489,10 @@ def main():
         [301, 107, 58, 16, 2],
     ]
     A = [[public_key.encrypt(value) for value in row] for row in clear_A]
-    run_majority_judgement(A)
+    winner = run_majority_judgement(A)
+
+    if debug_level >= 1:
+        print('Candidate {} wins!'.format(winner))
 
     # show calls to oracles
     if debug_level >= 1:
