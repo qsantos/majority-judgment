@@ -421,7 +421,7 @@ def compute_winner(T):
         print('comparisons =', decrypt(comparisons))
         print('challenges =', decrypt(challenges))
 
-    # batch challenge results (either challenge happened and was lost)
+    # batch challenge results (challenge did happen and was lost)
     challenge_results = and_gate_batched(
         [
             ONE - self_elimination[other_candidate]
@@ -430,7 +430,7 @@ def compute_winner(T):
             if other_candidate != candidate
         ],
         [
-            challenges[candidate][other_candidate]
+            challenges[other_candidate][candidate]
             for candidate in range(n_candidates)
             for other_candidate in range(n_candidates)
             if other_candidate != candidate
@@ -474,14 +474,94 @@ def run_majority_judgement(A):
     return compute_winner(T)
 
 
+def clear_majority_judgement(A):
+    # not very Pythonic but let's keep it simple for now
+    n_candidates = len(A)
+    n_choices = len(A[0])
+
+    # find best median
+    best_median = 0
+    for candidate, ballots in enumerate(A):
+        median_votes_for_candidate = sum(ballots) // 2
+        partial_sum = 0
+        for choice, n_votes in enumerate(ballots):
+            partial_sum += n_votes
+            if partial_sum > median_votes_for_candidate:
+                break
+        candidate_median = choice
+        if debug_level >= 3:
+            print('Median of {} is {}'.format(candidate, candidate_median))
+        if candidate_median > best_median:
+            best_median = candidate_median
+
+    # compute T
+    candidates = list(range(n_candidates))
+    T_elimination = [sum(row[:best_median]) for row in A]
+    T_victory = [sum(row[best_median+1:]) for row in A]
+    if debug_level >= 2:
+        print('T =', T_elimination, T_victory)
+
+    # resolve tie
+    while candidates:
+        if max(T_elimination) > max(T_victory):
+            # eliminate candidate
+            eliminated = max(candidates, key=T_elimination.__getitem__)
+            if debug_level >= 3:
+                print('Candidate {} eliminated'.format(eliminated))
+            del candidates[candidates.index(eliminated)]
+            T_elimination[eliminated] = 0
+            T_victory[eliminated] = 0
+        else:
+            winner = max(candidates, key=T_victory.__getitem__)
+            return winner
+    return None
+
+
+def run_test(seed):
+    random.seed(seed)
+    n_choices = 5
+    n_candidates = 3
+    max_value = 2**n_bits // n_choices // 2
+
+    clear_A = [
+        [random.randrange(max_value) for _ in range(n_choices)]
+        for _ in range(n_candidates)
+    ]
+    A = [[public_key.encrypt(value) for value in row] for row in clear_A]
+    if debug_level >= 3:
+        print('A =', clear_A)
+
+    if debug_level >= 2:
+        print('Running majority judgement in the clear')
+    clear_winner = clear_majority_judgement(clear_A)
+    if debug_level >= 2:
+        print('Clear protocol winner is', clear_winner)
+
+    if debug_level >= 2:
+        print('Running majority judgement encrypted')
+    winner = run_majority_judgement(A)
+    if debug_level >= 2:
+        print('Encrypted protocol winner is', winner)
+
+    assert winner == clear_winner
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.description = 'Run majority judgement protocol using Paillier encrption'
     parser.add_argument('--debug', '-d', default=1, type=int)
+    parser.add_argument('--test', '-t', type=int)
     args = parser.parse_args()
 
     global debug_level
     debug_level = args.debug
+
+    if args.test is not None:
+        seed = args.test
+        while True:
+            print('Seed: {}'.format(seed))
+            run_test(seed)
+            seed += 1
 
     clear_A = [
         [12, 68, 417, 104, 28],
