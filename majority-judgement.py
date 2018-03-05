@@ -22,7 +22,6 @@ import phe
 # debug_level = 1: normal output
 # debug_level = 2: some intermediate values
 # debug_level = 3: detailed intermediate values
-# debug_level = 4: all comparisons as well
 debug_level = 1
 
 
@@ -172,9 +171,6 @@ class PaillierMajorityJudgement:
             # length, otherwise, we would need to keep track of whose bits are
             # being sent to the and_gate
 
-        if debug_level >= 4:
-            for x, y, ti in zip(x_batch, y_batch, ti_batch):
-                print('{} > {} -> {}'.format(self.debug_decrypt(x), self.debug_decrypt(y), self.debug_decrypt(ti)))
         return ti_batch
 
     def private_add_gate_batched(self, x_batch, y_batch):
@@ -268,6 +264,12 @@ class PaillierMajorityJudgement:
         else:
             return [self.debug_decrypt(value) for value in x]
 
+    def debug(self, level, attrname):
+        if level > debug_level:
+            return
+        value = getattr(self, attrname)
+        print('{} = {}'.format(attrname, self.debug_decrypt(value)))
+
     def compute_precomputations(self):
         self.random_bits = [
             random.choice([self.ZERO, self.ONE])
@@ -280,14 +282,13 @@ class PaillierMajorityJudgement:
 
     def compute_sums(self):
         self.total_sum_of_candidate = [sum(row) for row in self.A]
+        self.debug(3, 'total_sum_of_candidate')
+
         self.doubled_partial_sums_of_candidate = [
             [2*sum(row[:j]) for j in range(1, len(row))]
             for row in self.A
         ]
-
-        if debug_level >= 3:
-            print('total_sum_of_candidate =', self.debug_decrypt(self.total_sum_of_candidate))
-            print('doubled_partial_sums_of_candidate =', self.debug_decrypt(self.doubled_partial_sums_of_candidate))
+        self.debug(3, 'doubled_partial_sums_of_candidate')
 
     def compute_bitrep_of_sums(self):
         flattened = self.lsbs_gate_batched(
@@ -300,7 +301,7 @@ class PaillierMajorityJudgement:
     def compute_is_right_to_median(self):
         # compare medians and partial sums to detect which values are left to the
         # best median and which are right to the best median
-        is_right_to_candidate_median = self.gt_gate_batched(
+        self.is_right_to_candidate_median = self.gt_gate_batched(
             self.doubled_partial_sums_of_candidate,  # already flattened
             [
                 self.total_sum_of_candidate[candidate]
@@ -309,20 +310,19 @@ class PaillierMajorityJudgement:
             ]
         )
         # unflatten
-        is_right_to_candidate_median = [
-            is_right_to_candidate_median[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)]
+        self.is_right_to_candidate_median = [
+            self.is_right_to_candidate_median[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)]
             for candidate in range(self.n_candidates)
         ]
+        self.debug(3, 'is_right_to_candidate_median')
+
         self.is_right_to_median = self.big_and_gate_batched([
             [
-                is_right_to_candidate_median[candidate][choice]
+                self.is_right_to_candidate_median[candidate][choice]
                 for candidate in range(self.n_candidates)
             ] for choice in range(self.n_choices-1)
         ])
-
-        if debug_level >= 3:
-            print('is_right_to_candidate_median =', self.debug_decrypt(is_right_to_candidate_median))
-            print('is_right_to_median =', self.debug_decrypt(self.is_right_to_median))
+        self.debug(3, 'is_right_to_median')
 
     def compute_T(self):
         is_left_to_median = [self.ONE - v for v in self.is_right_to_median]
@@ -342,9 +342,7 @@ class PaillierMajorityJudgement:
             sum(conditioned_terms[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)])
             for candidate in range(self.n_candidates*2)
         ]
-
-        if debug_level >= 2:
-            print('T =', self.debug_decrypt(T))
+        self.debug(2, 'T')
 
     def compute_bitrep_of_T(self):
         self.T = self.lsbs_gate_batched(self.T)
@@ -364,63 +362,61 @@ class PaillierMajorityJudgement:
             for other_candidate in range(candidate)
         ]
         # batch together comparisons for self-elimination and for challenges
-        comparisons = self.gt_gate_batched(
+        self.comparisons = self.gt_gate_batched(
             T_elimination + left_challenger,
             T_victory + right_challenger
         )
-        self_elimination = comparisons[:self.n_candidates]
+        self.debug(3, 'comparisons')
+
+        self.self_elimination = self.comparisons[:self.n_candidates]
+        self.debug(3, 'self_elimination')
+
         # extend triangular comparison matrix to full matrix
-        challenges = [[None]*self.n_candidates for _ in range(self.n_candidates)]
+        self.challenges = [[None]*self.n_candidates for _ in range(self.n_candidates)]
         i_comparison = self.n_candidates
         for candidate in range(self.n_candidates):
             for other_candidate in range(candidate):
-                comparison = comparisons[i_comparison]
-                challenges[candidate][other_candidate] = comparison
-                challenges[other_candidate][candidate] = self.ONE - comparison
+                comparison = self.comparisons[i_comparison]
+                self.challenges[candidate][other_candidate] = comparison
+                self.challenges[other_candidate][candidate] = self.ONE - comparison
                 i_comparison += 1
-
-        if debug_level >= 3:
-            print('comparisons =', self.debug_decrypt(comparisons))
-            print('challenges =', self.debug_decrypt(challenges))
+        self.debug(3, 'challenges')
 
         # batch challenge results (challenge did happen and was lost)
-        challenge_results = self.and_gate_batched(
+        self.challenge_results = self.and_gate_batched(
             [
-                self.ONE - self_elimination[other_candidate]
+                self.ONE - self.self_elimination[other_candidate]
                 for candidate in range(self.n_candidates)
                 for other_candidate in range(self.n_candidates)
                 if other_candidate != candidate
             ],
             [
-                challenges[other_candidate][candidate]
+                self.challenges[other_candidate][candidate]
                 for candidate in range(self.n_candidates)
                 for other_candidate in range(self.n_candidates)
                 if other_candidate != candidate
             ]
         )
-
-        if debug_level >= 3:
-            print('challenge_results =', self.debug_decrypt(challenge_results))
+        self.debug(3, 'challenge_results')
 
         # explicit formula (sum of simple ands version)
-        lose_batch = [
-            self_elimination[candidate] + sum(
-                challenge_results[candidate*(self.n_candidates-1):(candidate+1)*(self.n_candidates-1)]
+        self.lose_batch = [
+            self.self_elimination[candidate] + sum(
+                self.challenge_results[candidate*(self.n_candidates-1):(candidate+1)*(self.n_candidates-1)]
             )
             for candidate in range(self.n_candidates)
         ]
-
-        if debug_level >= 3:
-            print('lose_batch =', self.debug_decrypt(lose_batch))
+        self.debug(3, 'lose_batch')
 
         # reveal whether lose is null or not (masking with random number)
         r_batch = [random.randrange(1, 2**self.n_bits) for _ in range(self.n_candidates)]
-        clear_lose_batch = self.decrypt_gate_batched([
-            lose * r for lose, r in zip(lose_batch, r_batch)
-        ])
-
         if debug_level >= 2:
             print('r_batch =', r_batch)
+
+        clear_lose_batch = self.decrypt_gate_batched([
+            lose * r for lose, r in zip(self.lose_batch, r_batch)
+        ])
+        if debug_level >= 2:
             print('clear_lose_batch =', clear_lose_batch)
 
         assert clear_lose_batch.count(0) <= 1
