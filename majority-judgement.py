@@ -90,7 +90,7 @@ class PaillierMajorityJudgement:
         x_or_minus_x_batch = self.conditional_gate_batched(x_batch, y_as_one_or_minus_one_batch)
         return [self.halve(x_or_minus_x + x) for x_or_minus_x, x in zip(x_or_minus_x_batch, x_batch)]
 
-    def big_and_batched(self, bits_batch):
+    def big_and_gate_batched(self, bits_batch):
         """Reduce bits through and_gate"""
         bits_batch = [list(bits) for bits in bits_batch]
         while any(len(bits) > 1 for bits in bits_batch):
@@ -316,7 +316,7 @@ class PaillierMajorityJudgement:
             is_right_to_candidate_median[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)]
             for candidate in range(self.n_candidates)
         ]
-        is_right_to_median = self.big_and_batched([
+        is_right_to_median = self.big_and_gate_batched([
             [
                 is_right_to_candidate_median[candidate][choice]
                 for candidate in range(self.n_candidates)
