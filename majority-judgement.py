@@ -27,10 +27,12 @@ debug_level = 1
 
 
 class PaillierMajorityJudgement:
-    def __init__(self):
-        self.pk, self.sk = phe.paillier.generate_paillier_keypair()
+    def __init__(self, n_bits):
+        self.n_bits = n_bits
         self.n_parties = 8
         self.security_parameter = 80
+
+        self.pk, self.sk = phe.paillier.generate_paillier_keypair()
 
         self.n_conditional_gate = 0
         self.n_random_integer_gate = 0
@@ -115,7 +117,7 @@ class PaillierMajorityJudgement:
         self.d_decrypt_gate += 1
         return [int(self.sk.decrypt(x)) for x in x_batch]
 
-    def lsbs_batched(self, x_batch, n_bits):
+    def lsbs_batched(self, x_batch):
         """LSBs gate, as per ST06
 
         Efficient Binary Conversion for Paillier Encrypted Values
@@ -135,21 +137,21 @@ class PaillierMajorityJudgement:
             [2**self.security_parameter]*len(x_batch)
         )
         # the n_bits first bits of r are published encrypted individually
-        encrypted_r_bits_flat = self.random_bit_gate_batched(len(x_batch) * n_bits)
+        encrypted_r_bits_flat = self.random_bit_gate_batched(len(x_batch) * self.n_bits)
         encrypted_r_bits_batch = [
-            encrypted_r_bits_flat[i*n_bits:(i+1)*n_bits]
+            encrypted_r_bits_flat[i*self.n_bits:(i+1)*self.n_bits]
             for i in range(len(x_batch))
         ]
         # compute r = r_star 2**n_bits + \sum r_i 2**i
         r_batch = [
-            r_star * (2**n_bits) + sum(encrypted_r_bits[i] * (2**i) for i in range(n_bits))
+            r_star * (2**self.n_bits) + sum(encrypted_r_bits[i] * (2**i) for i in range(self.n_bits))
             for r_star, encrypted_r_bits in zip(r_star_batch, encrypted_r_bits_batch)
         ]
 
         # get clear bits of y = x - r
         y_batch = self.decrypt_gate_batched([x - r for x, r in zip(x_batch, r_batch)])
         y_bits_batch = [
-            [(y >> i) & 1 for i in range(n_bits)]
+            [(y >> i) & 1 for i in range(self.n_bits)]
             for y in y_batch
         ]
 
@@ -290,7 +292,7 @@ class PaillierMajorityJudgement:
         else:
             return [self.decrypt(value) for value in x]
 
-    def compute_is_left_right_to_median(self, A, n_bits):
+    def compute_is_left_right_to_median(self, A):
         # not very Pythonic but let's keep it simple for now
         n_candidates = len(A)
         n_choices = len(A[0])
@@ -312,7 +314,7 @@ class PaillierMajorityJudgement:
         flattened = total_sum_of_candidate + \
             [x for row in doubled_partial_sums_of_candidate for x in row]
         # switch to binary representation
-        flattened = self.lsbs_batched(flattened, n_bits)
+        flattened = self.lsbs_batched(flattened)
         # unflatten
         total_sum_of_candidate = flattened[:n_candidates]
         doubled_partial_sums_of_candidate = flattened[n_candidates:]
@@ -374,7 +376,7 @@ class PaillierMajorityJudgement:
 
         return T
 
-    def compute_winner(self, T, n_bits):
+    def compute_winner(self, T):
         assert len(T) % 2 == 0
         # not very Pythonic but let's keep it simple for now
         n_candidates = len(T) // 2
@@ -442,7 +444,7 @@ class PaillierMajorityJudgement:
             print('lose_batch =', self.decrypt(lose_batch))
 
         # reveal whether lose is null or not (masking with random number)
-        r_batch = [random.randrange(1, 2**n_bits) for _ in range(n_candidates)]
+        r_batch = [random.randrange(1, 2**self.n_bits) for _ in range(n_candidates)]
         clear_lose_batch = self.decrypt_gate_batched([
             lose * r for lose, r in zip(lose_batch, r_batch)
         ])
@@ -457,11 +459,11 @@ class PaillierMajorityJudgement:
         else:
             return None
 
-    def run(self, A, n_bits):
-        is_left_to_median, is_right_to_median = self.compute_is_left_right_to_median(A, n_bits)
+    def run(self, A):
+        is_left_to_median, is_right_to_median = self.compute_is_left_right_to_median(A)
         T = self.compute_T(A, is_left_to_median, is_right_to_median)
-        T = self.lsbs_batched(T, n_bits)  # switch to binary representation again
-        return self.compute_winner(T, n_bits)
+        T = self.lsbs_batched(T)  # switch to binary representation again
+        return self.compute_winner(T)
 
 
 def clear_majority_judgement(A):
@@ -524,12 +526,12 @@ def run_test(seed, n_choices, n_candidates, n_bits):
     if debug_level >= 1:
         print('Clear protocol winner is', clear_winner)
 
-    election = PaillierMajorityJudgement()
+    election = PaillierMajorityJudgement(n_bits)
     A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
 
     if debug_level >= 2:
         print('Running majority judgement encrypted')
-    winner = election.run(A, n_bits)
+    winner = election.run(A)
     if debug_level >= 1:
         print('Encrypted protocol winner is', winner)
 
