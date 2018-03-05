@@ -36,9 +36,7 @@ class PaillierMajorityJudgement:
 
         self.pk, self.sk = phe.paillier.generate_paillier_keypair()
 
-        self.n_conditional_gate = 0
         self.n_decrypt_gate = 0
-        self.d_conditional_gate = 0
         self.d_decrypt_gate = 0
 
         self.ZERO = self.pk.encrypt(0)
@@ -149,9 +147,6 @@ class PaillierMajorityJudgement:
             y is an encryption of -1 or 1
             returns x * y
         """
-        self.n_conditional_gate += len(x_batch)
-        self.d_conditional_gate += 1
-
         x_batch, y_batch = list(x_batch), list(y_batch)
         assert len(x_batch) == len(y_batch)
 
@@ -515,7 +510,6 @@ def run_test(seed, n_choices, n_candidates, n_bits):
 
     # show calls to oracles
     if debug_level >= 1:
-        print('{} conditional gates (depth: {})'.format(election.n_conditional_gate, election.d_conditional_gate))
         print('{} decrypt gates (depth: {})'.format(election.n_decrypt_gate, election.d_decrypt_gate))
 
     assert winner == clear_winner
