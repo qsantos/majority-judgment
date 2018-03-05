@@ -268,7 +268,7 @@ class PaillierMajorityJudgement:
         else:
             return [self.debug_decrypt(value) for value in x]
 
-    def precompute(self):
+    def compute_precomputations(self):
         self.random_bits = [
             random.choice([self.ZERO, self.ONE])
             for _ in range(self.n_candidates*(self.n_choices+2)*self.n_bits)
@@ -278,35 +278,32 @@ class PaillierMajorityJudgement:
             for _ in range(self.n_candidates*(self.n_choices+2))
         ]
 
-    def compute_is_left_right_to_median(self, A):
-        total_sum_of_candidate = [sum(row) for row in A]
-        doubled_partial_sums_of_candidate = [
+    def compute_sums(self):
+        self.total_sum_of_candidate = [sum(row) for row in self.A]
+        self.doubled_partial_sums_of_candidate = [
             [2*sum(row[:j]) for j in range(1, len(row))]
-            for row in A
+            for row in self.A
         ]
 
-        if debug_level >= 2:
-            print('A =', self.debug_decrypt(A))
-
         if debug_level >= 3:
-            print('total_sum_of_candidate =', self.debug_decrypt(total_sum_of_candidate))
-            print('doubled_partial_sums_of_candidate =', self.debug_decrypt(doubled_partial_sums_of_candidate))
+            print('total_sum_of_candidate =', self.debug_decrypt(self.total_sum_of_candidate))
+            print('doubled_partial_sums_of_candidate =', self.debug_decrypt(self.doubled_partial_sums_of_candidate))
 
-        # flatten total_sum_of_candidate and doubled_partial_sums_of_candidate together
-        flattened = total_sum_of_candidate + \
-            [x for row in doubled_partial_sums_of_candidate for x in row]
-        # switch to binary representation
-        flattened = self.lsbs_gate_batched(flattened)
-        # unflatten
-        total_sum_of_candidate = flattened[:self.n_candidates]
-        doubled_partial_sums_of_candidate = flattened[self.n_candidates:]
+    def compute_bitrep_of_sums(self):
+        flattened = self.lsbs_gate_batched(
+            self.total_sum_of_candidate +
+            [x for row in self.doubled_partial_sums_of_candidate for x in row]
+        )
+        self.total_sum_of_candidate = flattened[:self.n_candidates]
+        self.doubled_partial_sums_of_candidate = flattened[self.n_candidates:]
 
+    def compute_is_right_to_median(self):
         # compare medians and partial sums to detect which values are left to the
         # best median and which are right to the best median
         is_right_to_candidate_median = self.gt_gate_batched(
-            doubled_partial_sums_of_candidate,  # already flattened
+            self.doubled_partial_sums_of_candidate,  # already flattened
             [
-                total_sum_of_candidate[candidate]
+                self.total_sum_of_candidate[candidate]
                 for candidate in range(self.n_candidates)
                 for _ in range(self.n_choices-1)
             ]
@@ -316,35 +313,32 @@ class PaillierMajorityJudgement:
             is_right_to_candidate_median[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)]
             for candidate in range(self.n_candidates)
         ]
-        is_right_to_median = self.big_and_gate_batched([
+        self.is_right_to_median = self.big_and_gate_batched([
             [
                 is_right_to_candidate_median[candidate][choice]
                 for candidate in range(self.n_candidates)
             ] for choice in range(self.n_choices-1)
         ])
-        is_left_to_median = [self.ONE - v for v in is_right_to_median]
 
         if debug_level >= 3:
             print('is_right_to_candidate_median =', self.debug_decrypt(is_right_to_candidate_median))
-            print('is_left_to_median =', self.debug_decrypt(is_left_to_median))
-            print('is_right_to_median =', self.debug_decrypt(is_right_to_median))
+            print('is_right_to_median =', self.debug_decrypt(self.is_right_to_median))
 
-        return is_left_to_median, is_right_to_median
-
-    def compute_T(self, A, is_left_to_median, is_right_to_median):
+    def compute_T(self):
+        is_left_to_median = [self.ONE - v for v in self.is_right_to_median]
         conditioned_terms = self.and_gate_batched(
             [
-                A[candidate][choice]
+                self.A[candidate][choice]
                 for candidate in range(self.n_candidates)
                 for choice in range(self.n_choices-1)
             ] + [
-                A[candidate][choice]
+                self.A[candidate][choice]
                 for candidate in range(self.n_candidates)
                 for choice in range(1, self.n_choices)
             ],
-            is_left_to_median * self.n_candidates + is_right_to_median * self.n_candidates
+            is_left_to_median * self.n_candidates + self.is_right_to_median * self.n_candidates
         )
-        T = [
+        self.T = [
             sum(conditioned_terms[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)])
             for candidate in range(self.n_candidates*2)
         ]
@@ -352,12 +346,12 @@ class PaillierMajorityJudgement:
         if debug_level >= 2:
             print('T =', self.debug_decrypt(T))
 
-        return T
+    def compute_bitrep_of_T(self):
+        self.T = self.lsbs_gate_batched(self.T)
 
-    def compute_winner(self, T):
-        assert len(T) % 2 == 0
-
-        T_elimination, T_victory = T[:self.n_candidates], T[self.n_candidates:]
+    def compute_winner(self):
+        T_elimination = self.T[:self.n_candidates]
+        T_victory = self.T[self.n_candidates:]
 
         left_challenger = [
             T_victory[candidate]
@@ -431,16 +425,20 @@ class PaillierMajorityJudgement:
 
         assert clear_lose_batch.count(0) <= 1
         if 0 in clear_lose_batch:
-            return clear_lose_batch.index(0)
+            self.winner = clear_lose_batch.index(0)
         else:
-            return None
+            self.winner = None
 
     def run(self, A):
-        self.precompute()
-        is_left_to_median, is_right_to_median = self.compute_is_left_right_to_median(A)
-        T = self.compute_T(A, is_left_to_median, is_right_to_median)
-        T = self.lsbs_gate_batched(T)  # switch to binary representation again
-        return self.compute_winner(T)
+        self.A = A
+        self.compute_precomputations()
+        self.compute_sums()
+        self.compute_bitrep_of_sums()
+        self.compute_is_right_to_median()
+        self.compute_T()
+        self.compute_bitrep_of_T()
+        self.compute_winner()
+        return self.winner
 
 
 def clear_majority_judgement(n_choices, n_candidates, A):
@@ -490,7 +488,7 @@ def run_test(seed, n_choices, n_candidates, n_bits):
         [random.randrange(max_value) for _ in range(n_choices)]
         for _ in range(n_candidates)
     ]
-    if debug_level >= 3:
+    if debug_level >= 2:
         print('A =', clear_A)
 
     if debug_level >= 2:
