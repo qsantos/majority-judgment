@@ -10,7 +10,7 @@ Gamal or BGN). However, the output of the last LSBs can be El Gamal or BGN
 encryption, so that the last conditional gates could be replaced by offline
 pairings.
 
-Depends on `phe` (avaliable through in PIP):
+Depends on `phe` (available through PIP):
     <https://github.com/n1analytics/python-paillier>
 """
 import random
