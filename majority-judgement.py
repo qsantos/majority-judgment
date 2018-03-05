@@ -67,7 +67,8 @@ class PaillierMajorityJudgement:
         EncryptedNumber.__truediv__ casts it to a float, which can be
         problematic when the number is large
         """
-        return phe.EncryptedNumber(self.pk, x._raw_mul(self.HALF_MOD_N), x.exponent)
+        half_x = x._raw_mul(self.HALF_MOD_N)
+        return phe.EncryptedNumber(self.pk, half_x, x.exponent)
 
     def decrypt_gate_batched(self, x_batch):
         """Decryption gate
@@ -109,21 +110,36 @@ class PaillierMajorityJudgement:
 
         When x is 0 or 1, acts as a normal and gate"""
         y_as_one_or_minus_one_batch = [2*y-1 for y in y_batch]
-        x_or_minus_x_batch = self.conditional_gate_batched(x_batch, y_as_one_or_minus_one_batch)
-        return [self.halve(x_or_minus_x + x) for x_or_minus_x, x in zip(x_or_minus_x_batch, x_batch)]
+        x_or_minus_x_batch = self.conditional_gate_batched(
+            x_batch, y_as_one_or_minus_one_batch
+        )
+        return [
+            self.halve(x_or_minus_x + x)
+            for x_or_minus_x, x in zip(x_or_minus_x_batch, x_batch)
+        ]
 
     def big_and_gate_batched(self, bits_batch):
         """Reduce bits through and_gate"""
         bits_batch = [list(bits) for bits in bits_batch]
         while any(len(bits) > 1 for bits in bits_batch):
-            half_batch = [len(bits) // 2 for bits in bits_batch]
-            left_batch = [bits[:half] for bits, half in zip(bits_batch, half_batch)]
-            right_batch = [bits[half:half*2] for bits, half in zip(bits_batch, half_batch)]
-            rest_batch = [bits[half*2:] for bits, half in zip(bits_batch, half_batch)]  # either zero or one element
+            # split bits in two halves, and a rest (if length is odd)
+            half_length_batch = [len(bits) // 2 for bits in bits_batch]
+            left_half_batch = [
+                bits[:half]
+                for bits, half in zip(bits_batch, half_length_batch)
+            ]
+            right_half_batch = [
+                bits[half:half*2]
+                for bits, half in zip(bits_batch, half_length_batch)
+            ]
+            rest_batch = [
+                bits[half*2:]  # either zero or one element
+                for bits, half in zip(bits_batch, half_length_batch)
+            ]
 
-            # flatten
-            left_flat = [x for left in left_batch for x in left]
-            right_flat = [x for right in right_batch for x in right]
+            # flatten for batching
+            left_flat = [x for left in left_half_batch for x in left]
+            right_flat = [x for right in right_half_batch for x in right]
 
             # run the gate batched
             result_flat = self.and_gate_batched(left_flat, right_flat)
@@ -131,7 +147,7 @@ class PaillierMajorityJudgement:
             # unflaten
             result_batch = []
             total = 0
-            for half in half_batch:
+            for half in half_length_batch:
                 result_batch.append(result_flat[total:total+half])
                 total += half
 
@@ -165,34 +181,37 @@ class PaillierMajorityJudgement:
         y_flat = [bit for y in y_batch for bit in y]
 
         # first, compute all xi & yi in batch
-        x_and_y_flat = self.and_gate_batched(x_flat, y_flat)
+        xy_flat = self.and_gate_batched(x_flat, y_flat)
 
         # unflatten
-        x_and_y_batch = []
+        xy_batch = []
         total = 0
         for length in length_batch:
-            x_and_y_batch.append(x_and_y_flat[total:total+length])
+            xy_batch.append(xy_flat[total:total+length])
             total += length
 
         # first bit (only one and_gate needed)
-        ti_batch = [x[0] - x_and_y[0] for x, x_and_y in zip(x_batch, x_and_y_batch)]
+        ti_batch = [
+            x[0] - xy[0]
+            for x, xy in zip(x_batch, xy_batch)
+        ]
 
         # rest of the bits (two and_gate per bit)
         for i in range(1, len(x_batch[0])):
             # ti = (1 - (xi - yi)**2) * ti + xi*(1-yi)
             #    = (1 - xi - yi + 2 xi yi) ti + xi - xi yi
             parenthesis_batch = [
-                1 - x[i] - y[i] + 2*x_and_y[i]
-                for x, y, x_and_y in zip(x_batch, y_batch, x_and_y_batch)
+                1 - x[i] - y[i] + 2*xy[i]
+                for x, y, xy in zip(x_batch, y_batch, xy_batch)
             ]
-            left_hand_addition_batch = self.and_gate_batched(parenthesis_batch, ti_batch)
+            product_batch = self.and_gate_batched(parenthesis_batch, ti_batch)
             ti_batch = [
-                left_hand_addition + x[i] - x_and_y[i]
-                for left_hand_addition, x, x_and_y in zip(left_hand_addition_batch, x_batch, x_and_y_batch)
+                product + x[i] - xy[i]
+                for product, x, xy in zip(product_batch, x_batch, xy_batch)
             ]
-            # we exploit the fact that all the integers to compare are of the same
-            # length, otherwise, we would need to keep track of whose bits are
-            # being sent to the and_gate
+            # we exploit the fact that all the integers to compare are of the
+            # same length, otherwise, we would need to keep track of whose bits
+            # are being sent to the and_gate
 
         return ti_batch
 
@@ -225,7 +244,8 @@ class PaillierMajorityJudgement:
                 x[i] + y[i] - 2*x[i]*y[i]  # xi ^ yi
                 for x, y in zip(x_batch, y_batch)
             ]
-            xi_xor_yi_and_c_batch = self.and_gate_batched(xi_xor_yi_batch, c_batch)
+            xi_xor_yi_and_c_batch = \
+                self.and_gate_batched(xi_xor_yi_batch, c_batch)
             for k in range(len(x_batch)):
                 xi_xor_yi = xi_xor_yi_batch[k]
                 xi_xor_yi_and_c = xi_xor_yi_and_c_batch[k]
@@ -256,25 +276,30 @@ class PaillierMajorityJudgement:
         # generate r_*
         r_star_batch = [self.random_ints.pop() for _ in x_batch]
         # the n_bits first bits of r are published encrypted individually
-        encrypted_r_bits_batch = [
+        r_bits_batch = [
             [self.random_bits.pop() for _ in range(self.n_bits)]
             for _ in x_batch
         ]
         # compute r = r_star 2**n_bits + \sum r_i 2**i
         r_batch = [
-            r_star * (2**self.n_bits) + sum(encrypted_r_bits[i] * (2**i) for i in range(self.n_bits))
-            for r_star, encrypted_r_bits in zip(r_star_batch, encrypted_r_bits_batch)
+            r_star * (2**self.n_bits) + sum(
+                r_bits[i] * (2**i) for i in range(self.n_bits)
+            )
+            for r_star, r_bits in zip(r_star_batch, r_bits_batch)
         ]
 
         # get clear bits of y = x - r
-        y_batch = self.decrypt_gate_batched([x - r for x, r in zip(x_batch, r_batch)])
+        y_batch = self.decrypt_gate_batched([
+            x - r
+            for x, r in zip(x_batch, r_batch)
+        ])
         y_bits_batch = [
             [(y >> i) & 1 for i in range(self.n_bits)]
             for y in y_batch
         ]
 
-        # compute x = y + r using the encrypted bits of r and the clear bits of y
-        return self.private_add_gate_batched(encrypted_r_bits_batch, y_bits_batch)
+        # compute x = y + r using encrypted bits of r and clear bits of y
+        return self.private_add_gate_batched(r_bits_batch, y_bits_batch)
 
     def debug_decrypt(self, x):
         """Debug helper: recursively decrypt values"""
@@ -346,9 +371,10 @@ class PaillierMajorityJudgement:
             ]
         )
         # unflatten
+        n = self.n_choices-1  # length of each row
         self.is_right_to_candidate_median = [
-            self.is_right_to_candidate_median[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)]
-            for candidate in range(self.n_candidates)
+            self.is_right_to_candidate_median[i*n:(i+1)*n]
+            for i in range(self.n_candidates)
         ]
         self.debug(3, 'is_right_to_candidate_median')
 
@@ -373,11 +399,13 @@ class PaillierMajorityJudgement:
                 for candidate in range(self.n_candidates)
                 for choice in range(1, self.n_choices)
             ],
-            is_left_to_median * self.n_candidates + self.is_right_to_median * self.n_candidates
+            is_left_to_median * self.n_candidates +
+            self.is_right_to_median * self.n_candidates
         )
+        n = self.n_choices-1  # length of each row
         self.T = [
-            sum(conditioned_terms[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)])
-            for candidate in range(self.n_candidates*2)
+            sum(conditioned_terms[i*n:(i+1)*n])
+            for i in range(self.n_candidates*2)
         ]
         self.debug(2, 'T')
 
@@ -411,13 +439,16 @@ class PaillierMajorityJudgement:
         self.debug(3, 'self_elimination')
 
         # extend triangular comparison matrix to full matrix
-        self.challenges = [[None]*self.n_candidates for _ in range(self.n_candidates)]
+        self.challenges = [
+            [None]*self.n_candidates
+            for _ in range(self.n_candidates)
+        ]
         i_comparison = self.n_candidates
         for candidate in range(self.n_candidates):
-            for other_candidate in range(candidate):
+            for other in range(candidate):
                 comparison = self.comparisons[i_comparison]
-                self.challenges[candidate][other_candidate] = comparison
-                self.challenges[other_candidate][candidate] = self.ONE - comparison
+                self.challenges[candidate][other] = comparison
+                self.challenges[other][candidate] = self.ONE - comparison
                 i_comparison += 1
         self.debug(3, 'challenges')
 
@@ -441,16 +472,16 @@ class PaillierMajorityJudgement:
     def compute_winner(self):
         """Identify the winner (if any) using the results of the challenges"""
         # explicit formula (sum of simple ands version)
+        n = self.n_candidates - 1  # length of each row
         self.lose_batch = [
-            self.self_elimination[candidate] + sum(
-                self.challenge_results[candidate*(self.n_candidates-1):(candidate+1)*(self.n_candidates-1)]
-            )
-            for candidate in range(self.n_candidates)
+            self.self_elimination[i] + sum(self.challenge_results[i*n:(i+1)*n])
+            for i in range(self.n_candidates)
         ]
         self.debug(3, 'lose_batch')
 
         # reveal whether lose is null or not (masking with random number)
-        r_batch = [random.randrange(1, 2**self.n_bits) for _ in range(self.n_candidates)]
+        max_ = 2**self.n_bits
+        r_batch = [random.randrange(1, max_) for _ in range(self.n_candidates)]
         if debug_level >= 2:
             print('r_batch =', r_batch)
 
