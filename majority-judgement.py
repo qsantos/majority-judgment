@@ -26,6 +26,24 @@ debug_level = 1
 
 
 class PaillierMajorityJudgement:
+    """Implementation of a Majority Judgement protocol with Paillier encryption
+
+    The main method of this class is `run()`. Due to the high complexity of the
+    prococol, the code is split into several methods named `compute_*()`.
+
+    Basic operations (decryption, logical and, comparison, addition, bit
+    representation) are implemented in the `*_gate_batched()` methods. These
+    imply interactions between the different participants. To minimize the
+    number of interaction (circuit depth), these operations are batched (hence
+    the name). For instance, each call to a `and_gate_batched()` computes
+    several logical and in parallel. In general `*_batch` variables represent
+    values that are batched togather for concurrent handling.
+
+    Other methods are:
+        * `halve()`: divide an encrypted even value by two
+        * `debug_decrypt()`: decrypt a value (only for debugging!)
+        * `debug()`: show name and value of an attribute for easy debugging
+    """
     def __init__(self, n_choices, n_candidates, n_bits):
         self.n_choices = n_choices
         self.n_candidates = n_candidates
@@ -45,13 +63,18 @@ class PaillierMajorityJudgement:
 
     def halve(self, x):
         """Halve an integer that is known to be even
-        
+
         EncryptedNumber.__truediv__ casts it to a float, which can be
         problematic when the number is large
         """
         return phe.EncryptedNumber(self.pk, x._raw_mul(self.HALF_MOD_N), x.exponent)
 
     def decrypt_gate_batched(self, x_batch):
+        """Decryption gate
+
+        Each participant is assumed to hold part of the decryption key. This
+        gate allows them to cooperate so as to decrypt specific values.
+        """
         self.n_decrypt_gate += len(x_batch)
         self.d_decrypt_gate += 1
         return [int(self.sk.decrypt(x)) for x in x_batch]
@@ -265,12 +288,18 @@ class PaillierMajorityJudgement:
             return [self.debug_decrypt(value) for value in x]
 
     def debug(self, level, attrname):
+        """Debug helper: display name and value of an attribute"""
         if level > debug_level:
             return
         value = getattr(self, attrname)
         print('{} = {}'.format(attrname, self.debug_decrypt(value)))
 
     def compute_precomputations(self):
+        """Pre-compute what can be pre-computed
+
+        In practice, this means generating encrypted random values, which do
+        not depend on any input.
+        """
         self.random_bits = [
             random.choice([self.ZERO, self.ONE])
             for _ in range(self.n_candidates*(self.n_choices+2)*self.n_bits)
@@ -281,6 +310,11 @@ class PaillierMajorityJudgement:
         ]
 
     def compute_sums(self):
+        """Compute total and doubled partial sums of the ballots
+
+        The doubled partial sums are compared to the total sums to locate the
+        median.
+        """
         self.total_sum_of_candidate = [sum(row) for row in self.A]
         self.debug(3, 'total_sum_of_candidate')
 
@@ -291,6 +325,7 @@ class PaillierMajorityJudgement:
         self.debug(3, 'doubled_partial_sums_of_candidate')
 
     def compute_bitrep_of_sums(self):
+        """Switch the sums to binary representation"""
         flattened = self.lsbs_gate_batched(
             self.total_sum_of_candidate +
             [x for row in self.doubled_partial_sums_of_candidate for x in row]
@@ -299,8 +334,9 @@ class PaillierMajorityJudgement:
         self.doubled_partial_sums_of_candidate = flattened[self.n_candidates:]
 
     def compute_is_right_to_median(self):
-        # compare medians and partial sums to detect which values are left to the
-        # best median and which are right to the best median
+        """Compute median detection vector"""
+        # compare medians and partial sums to detect which values are left to
+        # the best median and which are right to the best median
         self.is_right_to_candidate_median = self.gt_gate_batched(
             self.doubled_partial_sums_of_candidate,  # already flattened
             [
@@ -325,6 +361,7 @@ class PaillierMajorityJudgement:
         self.debug(3, 'is_right_to_median')
 
     def compute_T(self):
+        """Compute intermediate tie-breaking matrix T"""
         is_left_to_median = [self.ONE - v for v in self.is_right_to_median]
         conditioned_terms = self.and_gate_batched(
             [
@@ -345,9 +382,11 @@ class PaillierMajorityJudgement:
         self.debug(2, 'T')
 
     def compute_bitrep_of_T(self):
+        """Switch T to binary representation"""
         self.T = self.lsbs_gate_batched(self.T)
 
-    def compute_winner(self):
+    def compute_challenge_results(self):
+        """Run challenges between the candidates (each-other and themselves)"""
         T_elimination = self.T[:self.n_candidates]
         T_victory = self.T[self.n_candidates:]
 
@@ -399,6 +438,8 @@ class PaillierMajorityJudgement:
         )
         self.debug(3, 'challenge_results')
 
+    def compute_winner(self):
+        """Identify the winner (if any) using the results of the challenges"""
         # explicit formula (sum of simple ands version)
         self.lose_batch = [
             self.self_elimination[candidate] + sum(
@@ -426,6 +467,7 @@ class PaillierMajorityJudgement:
             self.winner = None
 
     def run(self, A):
+        """Main method of the protocol"""
         self.A = A
         self.compute_precomputations()
         self.compute_sums()
@@ -433,11 +475,13 @@ class PaillierMajorityJudgement:
         self.compute_is_right_to_median()
         self.compute_T()
         self.compute_bitrep_of_T()
+        self.compute_challenge_results()
         self.compute_winner()
         return self.winner
 
 
 def clear_majority_judgement(n_choices, n_candidates, A):
+    """Compute the result of a majority judgement election in the clear"""
     # find best median
     best_median = 0
     for candidate, ballots in enumerate(A):
@@ -480,6 +524,7 @@ def run_test(seed, n_choices, n_candidates, n_bits):
     random.seed(seed)
     max_value = 2**n_bits // n_choices // 2
 
+    # generate the ballots
     clear_A = [
         [random.randrange(max_value) for _ in range(n_choices)]
         for _ in range(n_candidates)
@@ -487,31 +532,36 @@ def run_test(seed, n_choices, n_candidates, n_bits):
     if debug_level >= 2:
         print('A =', clear_A)
 
+    # clear protocol
     if debug_level >= 2:
         print('Running majority judgement in the clear')
     clear_winner = clear_majority_judgement(n_choices, n_candidates, clear_A)
     if debug_level >= 1:
         print('Clear protocol winner is', clear_winner)
 
+    # encrypt the ballots
     election = PaillierMajorityJudgement(n_choices, n_candidates, n_bits)
     A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
 
+    # encrypted protocol
     if debug_level >= 2:
         print('Running majority judgement encrypted')
     winner = election.run(A)
     if debug_level >= 1:
         print('Encrypted protocol winner is', winner)
 
-    # show calls to oracles
+    # show number of calls to oracle
     if debug_level >= 1:
-        print('{} decrypt gates (depth: {})'.format(election.n_decrypt_gate, election.d_decrypt_gate))
+        print('{} decrypt gates (depth: {})'.format(
+            election.n_decrypt_gate, election.d_decrypt_gate)
+        )
 
     assert winner == clear_winner
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.description = 'Run majority judgement protocol using Paillier encrption'
+    parser.description = 'Majority judgement protocol with Paillier encryption'
     parser.add_argument('--debug', '-d', default=1, type=int)
     parser.add_argument('--choices', '-n', default=5, type=int)
     parser.add_argument('--candidates', '-m', default=3, type=int)
