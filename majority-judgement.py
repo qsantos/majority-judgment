@@ -174,7 +174,7 @@ class PaillierMajorityJudgement:
 
         if debug_level >= 4:
             for x, y, ti in zip(x_batch, y_batch, ti_batch):
-                print('{} > {} -> {}'.format(self.decrypt(x), self.decrypt(y), self.decrypt(ti)))
+                print('{} > {} -> {}'.format(self.debug_decrypt(x), self.debug_decrypt(y), self.debug_decrypt(ti)))
         return ti_batch
 
     def private_add_gate_batched(self, x_batch, y_batch):
@@ -257,7 +257,7 @@ class PaillierMajorityJudgement:
         # compute x = y + r using the encrypted bits of r and the clear bits of y
         return self.private_add_gate_batched(encrypted_r_bits_batch, y_bits_batch)
 
-    def decrypt(self, x):
+    def debug_decrypt(self, x):
         """Debug helper: recursively decrypt values"""
         if x is None:
             return None
@@ -266,7 +266,7 @@ class PaillierMajorityJudgement:
         except TypeError:
             return self.sk.decrypt(x)
         else:
-            return [self.decrypt(value) for value in x]
+            return [self.debug_decrypt(value) for value in x]
 
     def precompute(self):
         self.random_bits = [
@@ -286,11 +286,11 @@ class PaillierMajorityJudgement:
         ]
 
         if debug_level >= 2:
-            print('A =', self.decrypt(A))
+            print('A =', self.debug_decrypt(A))
 
         if debug_level >= 3:
-            print('total_sum_of_candidate =', self.decrypt(total_sum_of_candidate))
-            print('doubled_partial_sums_of_candidate =', self.decrypt(doubled_partial_sums_of_candidate))
+            print('total_sum_of_candidate =', self.debug_decrypt(total_sum_of_candidate))
+            print('doubled_partial_sums_of_candidate =', self.debug_decrypt(doubled_partial_sums_of_candidate))
 
         # flatten total_sum_of_candidate and doubled_partial_sums_of_candidate together
         flattened = total_sum_of_candidate + \
@@ -325,9 +325,9 @@ class PaillierMajorityJudgement:
         is_left_to_median = [self.ONE - v for v in is_right_to_median]
 
         if debug_level >= 3:
-            print('is_right_to_candidate_median =', self.decrypt(is_right_to_candidate_median))
-            print('is_left_to_median =', self.decrypt(is_left_to_median))
-            print('is_right_to_median =', self.decrypt(is_right_to_median))
+            print('is_right_to_candidate_median =', self.debug_decrypt(is_right_to_candidate_median))
+            print('is_left_to_median =', self.debug_decrypt(is_left_to_median))
+            print('is_right_to_median =', self.debug_decrypt(is_right_to_median))
 
         return is_left_to_median, is_right_to_median
 
@@ -350,7 +350,7 @@ class PaillierMajorityJudgement:
         ]
 
         if debug_level >= 2:
-            print('T =', self.decrypt(T))
+            print('T =', self.debug_decrypt(T))
 
         return T
 
@@ -386,8 +386,8 @@ class PaillierMajorityJudgement:
                 i_comparison += 1
 
         if debug_level >= 3:
-            print('comparisons =', self.decrypt(comparisons))
-            print('challenges =', self.decrypt(challenges))
+            print('comparisons =', self.debug_decrypt(comparisons))
+            print('challenges =', self.debug_decrypt(challenges))
 
         # batch challenge results (challenge did happen and was lost)
         challenge_results = self.and_gate_batched(
@@ -406,7 +406,7 @@ class PaillierMajorityJudgement:
         )
 
         if debug_level >= 3:
-            print('challenge_results =', self.decrypt(challenge_results))
+            print('challenge_results =', self.debug_decrypt(challenge_results))
 
         # explicit formula (sum of simple ands version)
         lose_batch = [
@@ -417,7 +417,7 @@ class PaillierMajorityJudgement:
         ]
 
         if debug_level >= 3:
-            print('lose_batch =', self.decrypt(lose_batch))
+            print('lose_batch =', self.debug_decrypt(lose_batch))
 
         # reveal whether lose is null or not (masking with random number)
         r_batch = [random.randrange(1, 2**self.n_bits) for _ in range(self.n_candidates)]
