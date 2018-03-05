@@ -25,12 +25,7 @@ import phe
 # debug_level = 4: all comparisons as well
 debug_level = 1
 
-n_bits = 11  # NOTE: have enough bits for double partial sums!
 n_parties = 8
-n_conditional_gate, d_conditional_gate = 0, 0
-n_random_integer_gate, d_random_integer_gate = 0, 0
-n_random_bit_gate, d_random_bit_gate = 0, 0
-n_decrypt_gate, d_decrypt_gate = 0, 0
 security_parameter = 80
 
 # public_key is used as a global to encrypt constants (0 or 1)
@@ -115,7 +110,7 @@ def decrypt_gate_batched(x_batch):
     return [int(private_key.decrypt(x)) for x in x_batch]
 
 
-def lsbs_batched(x_batch):
+def lsbs_batched(x_batch, n_bits):
     """LSBs gate, as per ST06
 
     Efficient Binary Conversion for Paillier Encrypted Values
@@ -298,7 +293,7 @@ def decrypt(x):
     return private_key.decrypt(x)
 
 
-def compute_is_left_right_to_median(A):
+def compute_is_left_right_to_median(A, n_bits):
     # not very Pythonic but let's keep it simple for now
     n_candidates = len(A)
     n_choices = len(A[0])
@@ -320,7 +315,7 @@ def compute_is_left_right_to_median(A):
     flattened = total_sum_of_candidate + \
         [x for row in doubled_partial_sums_of_candidate for x in row]
     # switch to binary representation
-    flattened = lsbs_batched(flattened)
+    flattened = lsbs_batched(flattened, n_bits)
     # unflatten
     total_sum_of_candidate = flattened[:n_candidates]
     doubled_partial_sums_of_candidate = flattened[n_candidates:]
@@ -384,7 +379,7 @@ def compute_T(A, is_left_to_median, is_right_to_median):
     return T
 
 
-def compute_winner(T):
+def compute_winner(T, n_bits):
     assert len(T) % 2 == 0
     # not very Pythonic but let's keep it simple for now
     n_candidates = len(T) // 2
@@ -468,11 +463,11 @@ def compute_winner(T):
         return None
 
 
-def run_majority_judgement(A):
-    is_left_to_median, is_right_to_median = compute_is_left_right_to_median(A)
+def run_majority_judgement(A, n_bits):
+    is_left_to_median, is_right_to_median = compute_is_left_right_to_median(A, n_bits)
     T = compute_T(A, is_left_to_median, is_right_to_median)
-    T = lsbs_batched(T)  # switch to binary representation again
-    return compute_winner(T)
+    T = lsbs_batched(T, n_bits)  # switch to binary representation again
+    return compute_winner(T, n_bits)
 
 
 def clear_majority_judgement(A):
@@ -518,10 +513,8 @@ def clear_majority_judgement(A):
     return None
 
 
-def run_test(seed):
+def run_test(seed, n_choices, n_candidates, n_bits):
     random.seed(seed)
-    n_choices = 5
-    n_candidates = 3
     max_value = 2**n_bits // n_choices // 2
 
     clear_A = [
@@ -535,14 +528,30 @@ def run_test(seed):
     if debug_level >= 2:
         print('Running majority judgement in the clear')
     clear_winner = clear_majority_judgement(clear_A)
-    if debug_level >= 2:
+    if debug_level >= 1:
         print('Clear protocol winner is', clear_winner)
+
+    global n_conditional_gate, d_conditional_gate
+    global n_random_integer_gate, d_random_integer_gate
+    global n_random_bit_gate, d_random_bit_gate
+    global n_decrypt_gate, d_decrypt_gate
+    n_conditional_gate, d_conditional_gate = 0, 0
+    n_random_integer_gate, d_random_integer_gate = 0, 0
+    n_random_bit_gate, d_random_bit_gate = 0, 0
+    n_decrypt_gate, d_decrypt_gate = 0, 0
 
     if debug_level >= 2:
         print('Running majority judgement encrypted')
-    winner = run_majority_judgement(A)
-    if debug_level >= 2:
+    winner = run_majority_judgement(A, n_bits)
+    if debug_level >= 1:
         print('Encrypted protocol winner is', winner)
+
+    # show calls to oracles
+    if debug_level >= 1:
+        print('{} conditional gates (depth: {})'.format(n_conditional_gate, d_conditional_gate))
+        print('{} random integer gates (depth: {})'.format(n_random_integer_gate, d_random_integer_gate))
+        print('{} random bit gates (depth: {})'.format(n_random_bit_gate, d_random_bit_gate))
+        print('{} decrypt gates (depth: {})'.format(n_decrypt_gate, d_decrypt_gate))
 
     assert winner == clear_winner
 
@@ -551,36 +560,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.description = 'Run majority judgement protocol using Paillier encrption'
     parser.add_argument('--debug', '-d', default=1, type=int)
-    parser.add_argument('--test', '-t', type=int)
+    parser.add_argument('--choices', '-n', default=5, type=int)
+    parser.add_argument('--candidates', '-m', default=3, type=int)
+    parser.add_argument('--bits', '-l', default=11, type=int)
+    parser.add_argument('seed', default=0, type=int, nargs='?')
     args = parser.parse_args()
 
     global debug_level
     debug_level = args.debug
 
-    if args.test is not None:
-        seed = args.test
-        while True:
-            print('Seed: {}'.format(seed))
-            run_test(seed)
-            seed += 1
-
-    clear_A = [
-        [12, 68, 417, 104, 28],
-        [7, 99, 221, 71, 29],
-        [301, 107, 58, 16, 2],
-    ]
-    A = [[public_key.encrypt(value) for value in row] for row in clear_A]
-    winner = run_majority_judgement(A)
-
-    if debug_level >= 1:
-        print('Candidate {} wins!'.format(winner))
-
-    # show calls to oracles
-    if debug_level >= 1:
-        print('{} conditional gates (depth: {})'.format(n_conditional_gate, d_conditional_gate))
-        print('{} random integer gates (depth: {})'.format(n_random_integer_gate, d_random_integer_gate))
-        print('{} random bit gates (depth: {})'.format(n_random_bit_gate, d_random_bit_gate))
-        print('{} decrypt gates (depth: {})'.format(n_decrypt_gate, d_decrypt_gate))
+    seed = args.seed
+    while True:
+        print('Seed: {}'.format(seed))
+        run_test(seed, args.choices, args.candidates, args.bits)
+        seed += 1
 
 
 if __name__ == '__main__':
