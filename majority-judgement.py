@@ -452,12 +452,13 @@ def compute_winner(T):
         print('lose_batch =', decrypt(lose_batch))
 
     # reveal whether lose is null or not (masking with random number)
-    r_batch = random_integer_gate_batched([2**n_bits]*n_candidates)
+    r_batch = [random.randrange(1, 2**n_bits) for _ in range(n_candidates)]
     clear_lose_batch = decrypt_gate_batched([
         lose * r for lose, r in zip(lose_batch, r_batch)
     ])
 
     if debug_level >= 2:
+        print('r_batch =', r_batch)
         print('clear_lose_batch =', clear_lose_batch)
 
     assert clear_lose_batch.count(0) <= 1
