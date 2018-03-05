@@ -52,90 +52,10 @@ class PaillierMajorityJudgement:
         """
         return phe.EncryptedNumber(self.pk, x._raw_mul(self.HALF_MOD_N), x.exponent)
 
-    def private_add_gate_batched(self, x_batch, y_batch):
-        """Add gate for encrypted x and clear y, both in binary representation
-
-            x is a list of encrypted bits
-            y is a list of bits
-            return a list of encrypted bits representing the sum of x and y
-
-        Note that the final carry is discarded
-        """
-        x_batch = [list(x) for x in x_batch]
-        y_batch = [list(y) for y in y_batch]
-        assert len(x_batch) == len(y_batch)
-        assert all(len(x) == len(y) for x, y in zip(x_batch, y_batch))
-        # not strictly necessary but makes the code easier
-        assert all(len(x) == len(x_batch[0]) for x in x_batch)
-
-        # first bit (no and_gate needed)
-        ret_batch = [
-            [x[0] + y[0] - 2*x[0]*y[0]]  # xi ^ yi
-            for x, y in zip(x_batch, y_batch)
-        ]
-        c_batch = [x[0]*y[0] for x, y in zip(x_batch, y_batch)]  # xi & yi
-
-        # rest of the bits (one and_gate per bit)
-        for i in range(1, len(x_batch[0])):
-            xi_xor_yi_batch = [
-                x[i] + y[i] - 2*x[i]*y[i]  # xi ^ yi
-                for x, y in zip(x_batch, y_batch)
-            ]
-            xi_xor_yi_and_c_batch = self.and_gate_batched(xi_xor_yi_batch, c_batch)
-            for k in range(len(x_batch)):
-                xi_xor_yi = xi_xor_yi_batch[k]
-                xi_xor_yi_and_c = xi_xor_yi_and_c_batch[k]
-                c = c_batch[k]
-                xi = x_batch[k][i]
-                yi = y_batch[k][i]
-
-                r = xi_xor_yi + c - 2*xi_xor_yi_and_c
-                c_batch[k] = self.halve(xi + yi + c - r)
-                ret_batch[k].append(r)
-        return ret_batch
-
     def decrypt_gate_batched(self, x_batch):
         self.n_decrypt_gate += len(x_batch)
         self.d_decrypt_gate += 1
         return [int(self.sk.decrypt(x)) for x in x_batch]
-
-    def lsbs_batched(self, x_batch):
-        """LSBs gate, as per ST06
-
-        Efficient Binary Conversion for Paillier Encrypted Values
-        Section 4 (pages 10 through 12)
-
-            x is an encryption of an integer
-            returns the list of the encrypted bits of x
-
-        Alternatively, an iterable of integers (resp. iterable of iterable of
-        integers...) can be provided and a list (resp. list of list of
-        integers, ...) will be returned.
-        """
-        x_batch = list(x_batch)
-
-        # generate r_*
-        r_star_batch = [self.random_ints.pop() for _ in x_batch]
-        # the n_bits first bits of r are published encrypted individually
-        encrypted_r_bits_batch = [
-            [self.random_bits.pop() for _ in range(self.n_bits)]
-            for _ in x_batch
-        ]
-        # compute r = r_star 2**n_bits + \sum r_i 2**i
-        r_batch = [
-            r_star * (2**self.n_bits) + sum(encrypted_r_bits[i] * (2**i) for i in range(self.n_bits))
-            for r_star, encrypted_r_bits in zip(r_star_batch, encrypted_r_bits_batch)
-        ]
-
-        # get clear bits of y = x - r
-        y_batch = self.decrypt_gate_batched([x - r for x, r in zip(x_batch, r_batch)])
-        y_bits_batch = [
-            [(y >> i) & 1 for i in range(self.n_bits)]
-            for y in y_batch
-        ]
-
-        # compute x = y + r using the encrypted bits of r and the clear bits of y
-        return self.private_add_gate_batched(encrypted_r_bits_batch, y_bits_batch)
 
     def conditional_gate_batched(self, x_batch, y_batch):
         """Conditional gate, as per ST04
@@ -256,6 +176,86 @@ class PaillierMajorityJudgement:
             for x, y, ti in zip(x_batch, y_batch, ti_batch):
                 print('{} > {} -> {}'.format(self.decrypt(x), self.decrypt(y), self.decrypt(ti)))
         return ti_batch
+
+    def private_add_gate_batched(self, x_batch, y_batch):
+        """Add gate for encrypted x and clear y, both in binary representation
+
+            x is a list of encrypted bits
+            y is a list of bits
+            return a list of encrypted bits representing the sum of x and y
+
+        Note that the final carry is discarded
+        """
+        x_batch = [list(x) for x in x_batch]
+        y_batch = [list(y) for y in y_batch]
+        assert len(x_batch) == len(y_batch)
+        assert all(len(x) == len(y) for x, y in zip(x_batch, y_batch))
+        # not strictly necessary but makes the code easier
+        assert all(len(x) == len(x_batch[0]) for x in x_batch)
+
+        # first bit (no and_gate needed)
+        ret_batch = [
+            [x[0] + y[0] - 2*x[0]*y[0]]  # xi ^ yi
+            for x, y in zip(x_batch, y_batch)
+        ]
+        c_batch = [x[0]*y[0] for x, y in zip(x_batch, y_batch)]  # xi & yi
+
+        # rest of the bits (one and_gate per bit)
+        for i in range(1, len(x_batch[0])):
+            xi_xor_yi_batch = [
+                x[i] + y[i] - 2*x[i]*y[i]  # xi ^ yi
+                for x, y in zip(x_batch, y_batch)
+            ]
+            xi_xor_yi_and_c_batch = self.and_gate_batched(xi_xor_yi_batch, c_batch)
+            for k in range(len(x_batch)):
+                xi_xor_yi = xi_xor_yi_batch[k]
+                xi_xor_yi_and_c = xi_xor_yi_and_c_batch[k]
+                c = c_batch[k]
+                xi = x_batch[k][i]
+                yi = y_batch[k][i]
+
+                r = xi_xor_yi + c - 2*xi_xor_yi_and_c
+                c_batch[k] = self.halve(xi + yi + c - r)
+                ret_batch[k].append(r)
+        return ret_batch
+
+    def lsbs_batched(self, x_batch):
+        """LSBs gate, as per ST06
+
+        Efficient Binary Conversion for Paillier Encrypted Values
+        Section 4 (pages 10 through 12)
+
+            x is an encryption of an integer
+            returns the list of the encrypted bits of x
+
+        Alternatively, an iterable of integers (resp. iterable of iterable of
+        integers...) can be provided and a list (resp. list of list of
+        integers, ...) will be returned.
+        """
+        x_batch = list(x_batch)
+
+        # generate r_*
+        r_star_batch = [self.random_ints.pop() for _ in x_batch]
+        # the n_bits first bits of r are published encrypted individually
+        encrypted_r_bits_batch = [
+            [self.random_bits.pop() for _ in range(self.n_bits)]
+            for _ in x_batch
+        ]
+        # compute r = r_star 2**n_bits + \sum r_i 2**i
+        r_batch = [
+            r_star * (2**self.n_bits) + sum(encrypted_r_bits[i] * (2**i) for i in range(self.n_bits))
+            for r_star, encrypted_r_bits in zip(r_star_batch, encrypted_r_bits_batch)
+        ]
+
+        # get clear bits of y = x - r
+        y_batch = self.decrypt_gate_batched([x - r for x, r in zip(x_batch, r_batch)])
+        y_bits_batch = [
+            [(y >> i) & 1 for i in range(self.n_bits)]
+            for y in y_batch
+        ]
+
+        # compute x = y + r using the encrypted bits of r and the clear bits of y
+        return self.private_add_gate_batched(encrypted_r_bits_batch, y_bits_batch)
 
     def decrypt(self, x):
         """Debug helper: recursively decrypt values"""
