@@ -37,13 +37,8 @@ class PaillierMajorityJudgement:
         self.pk, self.sk = phe.paillier.generate_paillier_keypair()
 
         self.n_conditional_gate = 0
-        self.n_random_integer_gate = 0
-        self.n_random_bit_gate = 0
         self.n_decrypt_gate = 0
-
         self.d_conditional_gate = 0
-        self.d_random_integer_gate = 0
-        self.d_random_bit_gate = 0
         self.d_decrypt_gate = 0
 
         self.ZERO = self.pk.encrypt(0)
@@ -101,19 +96,6 @@ class PaillierMajorityJudgement:
                 ret_batch[k].append(r)
         return ret_batch
 
-    def random_integer_gate_batched(self, upper_bound_batched):
-        self.n_random_integer_gate += len(upper_bound_batched)
-        self.d_random_integer_gate += 1
-        return [
-            self.pk.encrypt(random.randrange(upper_bound))
-            for upper_bound in upper_bound_batched
-        ]
-
-    def random_bit_gate_batched(self, count):
-        self.n_random_bit_gate += count
-        self.d_random_bit_gate += 1
-        return [random.choice([self.ZERO, self.ONE]) for _ in range(count)]
-
     def decrypt_gate_batched(self, x_batch):
         self.n_decrypt_gate += len(x_batch)
         self.d_decrypt_gate += 1
@@ -135,14 +117,11 @@ class PaillierMajorityJudgement:
         x_batch = list(x_batch)
 
         # generate r_*
-        r_star_batch = self.random_integer_gate_batched(
-            [2**self.security_parameter]*len(x_batch)
-        )
+        r_star_batch = [self.random_ints.pop() for _ in x_batch]
         # the n_bits first bits of r are published encrypted individually
-        encrypted_r_bits_flat = self.random_bit_gate_batched(len(x_batch) * self.n_bits)
         encrypted_r_bits_batch = [
-            encrypted_r_bits_flat[i*self.n_bits:(i+1)*self.n_bits]
-            for i in range(len(x_batch))
+            [self.random_bits.pop() for _ in range(self.n_bits)]
+            for _ in x_batch
         ]
         # compute r = r_star 2**n_bits + \sum r_i 2**i
         r_batch = [
@@ -293,6 +272,16 @@ class PaillierMajorityJudgement:
             return self.sk.decrypt(x)
         else:
             return [self.decrypt(value) for value in x]
+
+    def precompute(self):
+        self.random_bits = [
+            random.choice([self.ZERO, self.ONE])
+            for _ in range(self.n_candidates*(self.n_choices+2)*self.n_bits)
+        ]
+        self.random_ints = [
+            self.pk.encrypt(random.randrange(2**self.security_parameter))
+            for _ in range(self.n_candidates*(self.n_choices+2))
+        ]
 
     def compute_is_left_right_to_median(self, A):
         total_sum_of_candidate = [sum(row) for row in A]
@@ -452,6 +441,7 @@ class PaillierMajorityJudgement:
             return None
 
     def run(self, A):
+        self.precompute()
         is_left_to_median, is_right_to_median = self.compute_is_left_right_to_median(A)
         T = self.compute_T(A, is_left_to_median, is_right_to_median)
         T = self.lsbs_batched(T)  # switch to binary representation again
@@ -526,8 +516,6 @@ def run_test(seed, n_choices, n_candidates, n_bits):
     # show calls to oracles
     if debug_level >= 1:
         print('{} conditional gates (depth: {})'.format(election.n_conditional_gate, election.d_conditional_gate))
-        print('{} random integer gates (depth: {})'.format(election.n_random_integer_gate, election.d_random_integer_gate))
-        print('{} random bit gates (depth: {})'.format(election.n_random_bit_gate, election.d_random_bit_gate))
         print('{} decrypt gates (depth: {})'.format(election.n_decrypt_gate, election.d_decrypt_gate))
 
     assert winner == clear_winner
