@@ -219,7 +219,7 @@ class PaillierMajorityJudgement:
                 ret_batch[k].append(r)
         return ret_batch
 
-    def lsbs_batched(self, x_batch):
+    def lsbs_gate_batched(self, x_batch):
         """LSBs gate, as per ST06
 
         Efficient Binary Conversion for Paillier Encrypted Values
@@ -296,7 +296,7 @@ class PaillierMajorityJudgement:
         flattened = total_sum_of_candidate + \
             [x for row in doubled_partial_sums_of_candidate for x in row]
         # switch to binary representation
-        flattened = self.lsbs_batched(flattened)
+        flattened = self.lsbs_gate_batched(flattened)
         # unflatten
         total_sum_of_candidate = flattened[:self.n_candidates]
         doubled_partial_sums_of_candidate = flattened[self.n_candidates:]
@@ -439,7 +439,7 @@ class PaillierMajorityJudgement:
         self.precompute()
         is_left_to_median, is_right_to_median = self.compute_is_left_right_to_median(A)
         T = self.compute_T(A, is_left_to_median, is_right_to_median)
-        T = self.lsbs_batched(T)  # switch to binary representation again
+        T = self.lsbs_gate_batched(T)  # switch to binary representation again
         return self.compute_winner(T)
 
 
