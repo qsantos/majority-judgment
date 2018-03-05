@@ -27,7 +27,9 @@ debug_level = 1
 
 
 class PaillierMajorityJudgement:
-    def __init__(self, n_bits):
+    def __init__(self, n_choices, n_candidates, n_bits):
+        self.n_choices = n_choices
+        self.n_candidates = n_candidates
         self.n_bits = n_bits
         self.n_parties = 8
         self.security_parameter = 80
@@ -293,10 +295,6 @@ class PaillierMajorityJudgement:
             return [self.decrypt(value) for value in x]
 
     def compute_is_left_right_to_median(self, A):
-        # not very Pythonic but let's keep it simple for now
-        n_candidates = len(A)
-        n_choices = len(A[0])
-
         total_sum_of_candidate = [sum(row) for row in A]
         doubled_partial_sums_of_candidate = [
             [2*sum(row[:j]) for j in range(1, len(row))]
@@ -316,8 +314,8 @@ class PaillierMajorityJudgement:
         # switch to binary representation
         flattened = self.lsbs_batched(flattened)
         # unflatten
-        total_sum_of_candidate = flattened[:n_candidates]
-        doubled_partial_sums_of_candidate = flattened[n_candidates:]
+        total_sum_of_candidate = flattened[:self.n_candidates]
+        doubled_partial_sums_of_candidate = flattened[self.n_candidates:]
 
         # compare medians and partial sums to detect which values are left to the
         # best median and which are right to the best median
@@ -325,20 +323,20 @@ class PaillierMajorityJudgement:
             doubled_partial_sums_of_candidate,  # already flattened
             [
                 total_sum_of_candidate[candidate]
-                for candidate in range(n_candidates)
-                for _ in range(n_choices-1)
+                for candidate in range(self.n_candidates)
+                for _ in range(self.n_choices-1)
             ]
         )
         # unflatten
         is_right_to_candidate_median = [
-            is_right_to_candidate_median[candidate*(n_choices-1):(candidate+1)*(n_choices-1)]
-            for candidate in range(n_candidates)
+            is_right_to_candidate_median[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)]
+            for candidate in range(self.n_candidates)
         ]
         is_right_to_median = self.big_and_batched([
             [
                 is_right_to_candidate_median[candidate][choice]
-                for candidate in range(n_candidates)
-            ] for choice in range(n_choices-1)
+                for candidate in range(self.n_candidates)
+            ] for choice in range(self.n_choices-1)
         ])
         is_left_to_median = [self.ONE - v for v in is_right_to_median]
 
@@ -350,25 +348,21 @@ class PaillierMajorityJudgement:
         return is_left_to_median, is_right_to_median
 
     def compute_T(self, A, is_left_to_median, is_right_to_median):
-        # not very Pythonic but let's keep it simple for now
-        n_candidates = len(A)
-        n_choices = len(A[0])
-
         conditioned_terms = self.and_gate_batched(
             [
                 A[candidate][choice]
-                for candidate in range(n_candidates)
-                for choice in range(n_choices-1)
+                for candidate in range(self.n_candidates)
+                for choice in range(self.n_choices-1)
             ] + [
                 A[candidate][choice]
-                for candidate in range(n_candidates)
-                for choice in range(1, n_choices)
+                for candidate in range(self.n_candidates)
+                for choice in range(1, self.n_choices)
             ],
-            is_left_to_median * n_candidates + is_right_to_median * n_candidates
+            is_left_to_median * self.n_candidates + is_right_to_median * self.n_candidates
         )
         T = [
-            sum(conditioned_terms[candidate*(n_choices-1):(candidate+1)*(n_choices-1)])
-            for candidate in range(n_candidates*2)
+            sum(conditioned_terms[candidate*(self.n_choices-1):(candidate+1)*(self.n_choices-1)])
+            for candidate in range(self.n_candidates*2)
         ]
 
         if debug_level >= 2:
@@ -378,19 +372,17 @@ class PaillierMajorityJudgement:
 
     def compute_winner(self, T):
         assert len(T) % 2 == 0
-        # not very Pythonic but let's keep it simple for now
-        n_candidates = len(T) // 2
 
-        T_elimination, T_victory = T[:n_candidates], T[n_candidates:]
+        T_elimination, T_victory = T[:self.n_candidates], T[self.n_candidates:]
 
         left_challenger = [
             T_victory[candidate]
-            for candidate in range(n_candidates)
+            for candidate in range(self.n_candidates)
             for other_candidate in range(candidate)
         ]
         right_challenger = [
             T_victory[other_candidate]
-            for candidate in range(n_candidates)
+            for candidate in range(self.n_candidates)
             for other_candidate in range(candidate)
         ]
         # batch together comparisons for self-elimination and for challenges
@@ -398,11 +390,11 @@ class PaillierMajorityJudgement:
             T_elimination + left_challenger,
             T_victory + right_challenger
         )
-        self_elimination = comparisons[:n_candidates]
+        self_elimination = comparisons[:self.n_candidates]
         # extend triangular comparison matrix to full matrix
-        challenges = [[None]*n_candidates for _ in range(n_candidates)]
-        i_comparison = n_candidates
-        for candidate in range(n_candidates):
+        challenges = [[None]*self.n_candidates for _ in range(self.n_candidates)]
+        i_comparison = self.n_candidates
+        for candidate in range(self.n_candidates):
             for other_candidate in range(candidate):
                 comparison = comparisons[i_comparison]
                 challenges[candidate][other_candidate] = comparison
@@ -417,14 +409,14 @@ class PaillierMajorityJudgement:
         challenge_results = self.and_gate_batched(
             [
                 self.ONE - self_elimination[other_candidate]
-                for candidate in range(n_candidates)
-                for other_candidate in range(n_candidates)
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(self.n_candidates)
                 if other_candidate != candidate
             ],
             [
                 challenges[other_candidate][candidate]
-                for candidate in range(n_candidates)
-                for other_candidate in range(n_candidates)
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(self.n_candidates)
                 if other_candidate != candidate
             ]
         )
@@ -435,16 +427,16 @@ class PaillierMajorityJudgement:
         # explicit formula (sum of simple ands version)
         lose_batch = [
             self_elimination[candidate] + sum(
-                challenge_results[candidate*(n_candidates-1):(candidate+1)*(n_candidates-1)]
+                challenge_results[candidate*(self.n_candidates-1):(candidate+1)*(self.n_candidates-1)]
             )
-            for candidate in range(n_candidates)
+            for candidate in range(self.n_candidates)
         ]
 
         if debug_level >= 3:
             print('lose_batch =', self.decrypt(lose_batch))
 
         # reveal whether lose is null or not (masking with random number)
-        r_batch = [random.randrange(1, 2**self.n_bits) for _ in range(n_candidates)]
+        r_batch = [random.randrange(1, 2**self.n_bits) for _ in range(self.n_candidates)]
         clear_lose_batch = self.decrypt_gate_batched([
             lose * r for lose, r in zip(lose_batch, r_batch)
         ])
@@ -466,11 +458,7 @@ class PaillierMajorityJudgement:
         return self.compute_winner(T)
 
 
-def clear_majority_judgement(A):
-    # not very Pythonic but let's keep it simple for now
-    n_candidates = len(A)
-    n_choices = len(A[0])
-
+def clear_majority_judgement(n_choices, n_candidates, A):
     # find best median
     best_median = 0
     for candidate, ballots in enumerate(A):
@@ -522,11 +510,11 @@ def run_test(seed, n_choices, n_candidates, n_bits):
 
     if debug_level >= 2:
         print('Running majority judgement in the clear')
-    clear_winner = clear_majority_judgement(clear_A)
+    clear_winner = clear_majority_judgement(n_choices, n_candidates, clear_A)
     if debug_level >= 1:
         print('Clear protocol winner is', clear_winner)
 
-    election = PaillierMajorityJudgement(n_bits)
+    election = PaillierMajorityJudgement(n_choices, n_candidates, n_bits)
     A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
 
     if debug_level >= 2:
