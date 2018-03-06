@@ -78,7 +78,7 @@ class PaillierMajorityJudgement:
         """
         self.n_decrypt_gate += len(x_batch)
         self.d_decrypt_gate += 1
-        return [int(self.sk.decrypt(x)) for x in x_batch]
+        return [self.sk.decrypt(x) for x in x_batch]
 
     def conditional_gate_batched(self, x_batch, y_batch):
         """Conditional gate, as per ST04
