@@ -18,6 +18,8 @@ import argparse
 
 import phe
 
+import paillier
+
 # debug_level = 0: quiet
 # debug_level = 1: normal output
 # debug_level = 2: some intermediate values
@@ -40,35 +42,24 @@ class PaillierMajorityJudgement:
     values that are batched togather for concurrent handling.
 
     Other methods are:
-        * `halve()`: divide an encrypted even value by two
         * `debug_decrypt()`: decrypt a value (only for debugging!)
         * `debug()`: show name and value of an attribute for easy debugging
     """
-    def __init__(self, n_choices, n_candidates, n_bits):
+    def __init__(self, pk, sk, n_choices, n_candidates, n_bits):
         self.n_choices = n_choices
         self.n_candidates = n_candidates
         self.n_bits = n_bits
         self.n_parties = 8
         self.security_parameter = 80
 
-        self.pk, self.sk = phe.paillier.generate_paillier_keypair()
+        self.pk = pk
+        self.sk = sk
 
         self.n_decrypt_gate = 0
         self.d_decrypt_gate = 0
 
         self.ZERO = self.pk.encrypt(0)
         self.ONE = self.pk.encrypt(1)
-
-        self.HALF_MOD_N = phe.util.invert(2, self.pk.n)
-
-    def halve(self, x):
-        """Halve an integer that is known to be even
-
-        EncryptedNumber.__truediv__ casts it to a float, which can be
-        problematic when the number is large
-        """
-        half_x = x._raw_mul(self.HALF_MOD_N)
-        return phe.EncryptedNumber(self.pk, half_x, x.exponent)
 
     def decrypt_gate_batched(self, x_batch):
         """Decryption gate
@@ -114,7 +105,7 @@ class PaillierMajorityJudgement:
             x_batch, y_as_one_or_minus_one_batch
         )
         return [
-            self.halve(x_or_minus_x + x)
+            (x_or_minus_x + x) / 2
             for x_or_minus_x, x in zip(x_or_minus_x_batch, x_batch)
         ]
 
@@ -254,7 +245,7 @@ class PaillierMajorityJudgement:
                 yi = y_batch[k][i]
 
                 r = xi_xor_yi + c - 2*xi_xor_yi_and_c
-                c_batch[k] = self.halve(xi + yi + c - r)
+                c_batch[k] = (xi + yi + c - r) / 2
                 ret_batch[k].append(r)
         return ret_batch
 
@@ -551,7 +542,7 @@ def clear_majority_judgement(n_choices, n_candidates, A):
     return None
 
 
-def run_test(seed, n_choices, n_candidates, n_bits):
+def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
     random.seed(seed)
     max_value = 2**n_bits // n_choices // 2
 
@@ -571,7 +562,8 @@ def run_test(seed, n_choices, n_candidates, n_bits):
         print('Clear protocol winner is', clear_winner)
 
     # encrypt the ballots
-    election = PaillierMajorityJudgement(n_choices, n_candidates, n_bits)
+    election = PaillierMajorityJudgement(pk, sk, n_choices, n_candidates,
+                                         n_bits)
     A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
 
     # encrypted protocol
@@ -597,16 +589,39 @@ def main():
     parser.add_argument('--choices', '-n', default=5, type=int)
     parser.add_argument('--candidates', '-m', default=3, type=int)
     parser.add_argument('--bits', '-l', default=11, type=int)
+    parser.add_argument('--cryptosystem', '-c', default='phe',
+                        choices=['mock', 'phe'])
     parser.add_argument('seed', default=0, type=int, nargs='?')
     args = parser.parse_args()
 
     global debug_level
     debug_level = args.debug
 
+    # in phe, __truediv__ returns a float, so we redefine it for integers only
+    def __truediv__(self, other):
+        # assumes self is divisible by other
+        if other != 2:
+            # we only ever use halving, so let us keep it simple
+            raise NotImplementedError
+        if not hasattr(self.public_key, '_HALF_MOD_N'):
+            # compute 1/2 mod n
+            self.public_key._HALF_MOD_N = phe.util.invert(2, self.public_key.n)
+        half_self = self._raw_mul(self.public_key._HALF_MOD_N)
+        return phe.EncryptedNumber(self.public_key, half_self, self.exponent)
+    phe.EncryptedNumber.__truediv__ = __truediv__
+
+    # select the cryptosystem
+    if args.cryptosystem == 'mock':
+        pk, sk = paillier.mock_paillier_keypair()
+    elif args.cryptosystem == 'phe':
+        pk, sk = phe.paillier.generate_paillier_keypair()
+    else:
+        raise NotImplementedError
+
     seed = args.seed
     while True:
         print('Seed: {}'.format(seed))
-        run_test(seed, args.choices, args.candidates, args.bits)
+        run_test(seed, pk, sk, args.choices, args.candidates, args.bits)
         seed += 1
 
 
