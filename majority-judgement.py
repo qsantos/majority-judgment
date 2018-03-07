@@ -13,6 +13,7 @@ pairings.
 Depends on `phe` (available through PIP):
     <https://github.com/n1analytics/python-paillier>
 """
+import math
 import random
 import argparse
 
@@ -581,10 +582,57 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
     assert winner == clear_winner
 
 
+def crt(residues, modulos):
+    redidues = list(residues)
+    product = 1
+    for modulo in modulos:
+        product *= modulo
+    r = 0
+    for residue, modulo in zip(residues, modulos):
+        NX = product // modulo
+        r += residue * NX * phe.util.invert(NX, modulo)
+        r %= product
+    return r
+
+
+class SharedPaillerSecretKey:
+    def __init__(self, shares):
+        self.shares = shares
+
+    def decrypt(self, x):
+        pk = x.public_key
+        c = x.ciphertext(be_secure=False)
+        decrypts = [phe.util.powmod(c, share, pk.nsquare) for share in self.shares]
+        product = 1
+        for decrypt in decrypts:
+            product = (product * decrypt) % pk.nsquare
+        clear = (product-1) // pk.n
+        if clear > pk.n // 2:
+            return clear - pk.n
+        return clear
+
+
+def share_paillier_secret_key(sk, n_parties):
+    pk = sk.public_key
+    # Carmicael function applied on n (= lcm(p-1, q-1))
+    lambda_ = (sk.p-1)*(sk.q-1) // math.gcd(sk.p-1, sk.q-1)
+
+    # choose d such that d = 0 mod lambda_ and d = 1 mod n
+    d = crt([0, 1], [lambda_, pk.n])
+
+    shares = [
+        random.randrange(pk.n*lambda_)
+        for _ in range(n_parties-1)
+    ]
+    shares.append((d - sum(shares)) % (pk.n*lambda_))
+    return SharedPaillerSecretKey(shares)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.description = 'Majority judgement protocol with Paillier encryption'
     parser.add_argument('--debug', '-d', default=1, type=int)
+    parser.add_argument('--parties', default=0, type=int)
     parser.add_argument('--choices', '-n', default=5, type=int)
     parser.add_argument('--candidates', '-m', default=3, type=int)
     parser.add_argument('--bits', '-l', default=11, type=int)
@@ -616,6 +664,9 @@ def main():
         pk, sk = phe.paillier.generate_paillier_keypair()
     else:
         raise NotImplementedError
+
+    if args.parties > 0:
+        sk = share_paillier_secret_key(sk, args.parties)
 
     seed = args.seed
     while True:
