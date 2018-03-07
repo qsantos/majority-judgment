@@ -638,6 +638,7 @@ def main():
     parser.add_argument('--bits', '-l', default=11, type=int)
     parser.add_argument('--cryptosystem', '-c', default='phe',
                         choices=['mock', 'phe'])
+    parser.add_argument('--simulations', default=1, type=int)
     parser.add_argument('seed', default=0, type=int, nargs='?')
     args = parser.parse_args()
 
@@ -668,11 +669,14 @@ def main():
     if args.parties > 0:
         sk = share_paillier_secret_key(sk, args.parties)
 
+    max_simulations = args.simulations if args.simulations else float('inf')
     seed = args.seed
-    while True:
+    simulated = 0
+    while simulated < max_simulations:
         print('Seed: {}'.format(seed))
         run_test(seed, pk, sk, args.choices, args.candidates, args.bits)
         seed += 1
+        simulated += 1
 
 
 if __name__ == '__main__':
