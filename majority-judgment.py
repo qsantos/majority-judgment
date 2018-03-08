@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Majority judgement using Paillier encryption
+Majority judgment using Paillier encryption
 
 LSBs and the conditional gates are partially implemented: the interaction
 between the parties is simulated by generating all values locally
@@ -502,8 +502,8 @@ class PaillierMajorityJudgement:
         return self.winner
 
 
-def clear_majority_judgement(n_choices, n_candidates, A):
-    """Compute the result of a majority judgement election in the clear"""
+def clear_majority_judgment(n_choices, n_candidates, A):
+    """Compute the result of a majority judgment election in the clear"""
     # find best median
     best_median = 0
     for candidate, ballots in enumerate(A):
@@ -556,8 +556,8 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
 
     # clear protocol
     if debug_level >= 2:
-        print('Running majority judgement in the clear')
-    clear_winner = clear_majority_judgement(n_choices, n_candidates, clear_A)
+        print('Running majority judgment in the clear')
+    clear_winner = clear_majority_judgment(n_choices, n_candidates, clear_A)
     if debug_level >= 1:
         print('Clear protocol winner is', clear_winner)
 
@@ -568,7 +568,7 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
 
     # encrypted protocol
     if debug_level >= 2:
-        print('Running majority judgement encrypted')
+        print('Running majority judgment encrypted')
     winner = election.run(A)
     if debug_level >= 1:
         print('Encrypted protocol winner is', winner)
@@ -630,7 +630,7 @@ def share_paillier_secret_key(sk, n_parties):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.description = 'Majority judgement protocol with Paillier encryption'
+    parser.description = 'Majority judgment protocol with Paillier encryption'
     parser.add_argument('--debug', '-d', default=1, type=int)
     parser.add_argument('--parties', default=0, type=int)
     parser.add_argument('--choices', '-n', default=5, type=int)
