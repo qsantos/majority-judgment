@@ -542,17 +542,29 @@ def clear_majority_judgment(n_choices, n_candidates, A):
     return None
 
 
+#inspired from http://umusebo.com/generate-n-random-numbers-whose-sum-equals-a-known-value/
+
+
+def random_numbers_totaling(total, count):
+    """Return count random numbers whose sum equals total"""
+    # divide [0, total] in count random subranges
+    fenceposts = sorted(random.choice(range(total+1)) for _ in range(count-1))
+    # return the lengths of these subranges
+    return [b - a for a, b in zip([0] + fenceposts, fenceposts + [total])]
+
+
 def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
     random.seed(seed)
-    max_value = 2**n_bits // n_choices // 2
 
     # generate the ballots
     clear_A = [
-        [random.randrange(max_value) for _ in range(n_choices)]
+        random_numbers_totaling(2**n_bits // 2 - 1, n_choices)
         for _ in range(n_candidates)
     ]
     if debug_level >= 2:
         print('A =', clear_A)
+    # for simplicity, we assume that the aggregate matrix is already normalized
+    assert all(sum(clear_A[0]) == sum(row) for row in clear_A)
 
     # clear protocol
     if debug_level >= 2:
@@ -564,6 +576,7 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
     # encrypt the ballots
     election = PaillierMajorityJudgement(pk, sk, n_choices, n_candidates,
                                          n_bits)
+
     A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
 
     # encrypted protocol
