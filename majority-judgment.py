@@ -609,16 +609,57 @@ def crt(residues, modulos):
 
 
 class SharedPaillerSecretKey:
-    def __init__(self, shares):
+    def __init__(self, pk, shares):
         self.shares = shares
+        # the probability that self.v is not invertible is
+        # (p + q - 1) / n ~= 2**1025 / 2**2048 = ε
+        self.v = random.randrange(0, pk.nsquare)**2 % pk.nsquare
+        self.verifications = [
+            phe.util.powmod(self.v, share, pk.nsquare)
+            for share in self.shares
+        ]
 
     def decrypt(self, x):
         pk = x.public_key
         c = x.ciphertext(be_secure=False)
-        decrypts = [phe.util.powmod(c, share, pk.nsquare) for share in self.shares]
+        partial_decryptions = [
+            phe.util.powmod(c, share, pk.nsquare)
+            for share in self.shares
+        ]
+        randoms = [
+            random.randrange(pk.nsquare)
+            for _ in self.shares
+        ]
+        left_commitments = [
+            phe.util.powmod(self.v, random, pk.nsquare)
+            for random in randoms
+        ]
+        right_commitments = [
+            phe.util.powmod(c, random, pk.nsquare)
+            for random in randoms
+        ]
+        challenges = [
+            random.randrange(pk.nsquare)  # TODO: should be hash
+            for _ in self.shares
+        ]
+        proofs = [
+            random + challenge * share
+            for random, challenge, share in zip(randoms, challenges, self.shares)
+        ]
+        # verify proofs
+        for verification, partial_decryption, left_commitment, right_commitment, challenge, proof in zip(
+            self.verifications, partial_decryptions, left_commitments, right_commitments, challenges, proofs
+        ):
+            assert phe.util.powmod(self.v, proof, pk.nsquare) == (
+                left_commitment * phe.util.powmod(verification, challenge, pk.nsquare)
+            ) % pk.nsquare
+            assert phe.util.powmod(c, proof, pk.nsquare) == (
+                right_commitment * phe.util.powmod(partial_decryption, challenge, pk.nsquare)
+            ) % pk.nsquare
+
         product = 1
-        for decrypt in decrypts:
-            product = (product * decrypt) % pk.nsquare
+        for partial_decryption in partial_decryptions:
+            product = (product * partial_decryption) % pk.nsquare
         clear = (product-1) // pk.n
         if clear > pk.n // 2:
             return clear - pk.n
@@ -638,7 +679,7 @@ def share_paillier_secret_key(sk, n_parties):
         for _ in range(n_parties-1)
     ]
     shares.append((d - sum(shares)) % (pk.n*lambda_))
-    return SharedPaillerSecretKey(shares)
+    return SharedPaillerSecretKey(pk, shares)
 
 
 def main():
