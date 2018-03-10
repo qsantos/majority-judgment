@@ -28,6 +28,16 @@ import paillier
 debug_level = 1
 
 
+def prod(l, m=None):
+    l = iter(l)
+    r = next(l)
+    for x in l:
+        r *= x
+        if m is not None:
+            r %= m
+    return r
+
+
 class PaillierMajorityJudgement:
     """Implementation of a Majority Judgement protocol with Paillier encryption
 
@@ -70,7 +80,10 @@ class PaillierMajorityJudgement:
         """
         self.n_decrypt_gate += len(x_batch)
         self.d_decrypt_gate += 1
-        return [self.sk.decrypt(x) for x in x_batch]
+        if hasattr(self.sk, 'decrypt_batched'):
+            return self.sk.decrypt_batched(x_batch)
+        else:
+            return [self.sk.decrypt(x) for x in x_batch]
 
     def conditional_gate_batched(self, x_batch, y_batch):
         """Conditional gate, as per ST04
@@ -619,13 +632,37 @@ class SharedPaillerSecretKey:
             for share in self.shares
         ]
 
-    def decrypt(self, x):
-        pk = x.public_key
-        c = x.ciphertext(be_secure=False)
-        partial_decryptions = [
-            phe.util.powmod(c, share, pk.nsquare)
+    def decrypt_batched(self, x_batch):
+        pk = x_batch[0].public_key
+        c_batch = [
+            x.ciphertext(be_secure=False)
+            for x in x_batch
+        ]
+
+        partial_decryptions_batch = [
+            [phe.util.powmod(c, share, pk.nsquare) for c in c_batch]
             for share in self.shares
         ]
+        lambdas_batch = [
+            [random.randrange(2**80) for c in c_batch]
+            for share in self.shares
+        ]
+
+        combined_c_batch = [
+            prod(
+                phe.util.powmod(c, lambda_, pk.nsquare)
+                for c, lambda_ in zip(c_batch, lambdas)
+            ) for lambdas in lambdas_batch
+        ]
+
+        combined_partial_decryption_batch = [
+            prod(
+                phe.util.powmod(partial_decryption, lambda_, pk.nsquare)
+                for partial_decryption, lambda_ in zip(partial_decryptions, lambdas)
+            ) for partial_decryptions, lambdas in zip(partial_decryptions_batch, lambdas_batch)
+        ]
+
+        # combined zero-knowledge proofs
         randoms = [
             random.randrange(pk.nsquare)
             for _ in self.shares
@@ -635,35 +672,37 @@ class SharedPaillerSecretKey:
             for random in randoms
         ]
         right_commitments = [
-            phe.util.powmod(c, random, pk.nsquare)
-            for random in randoms
+            phe.util.powmod(combined_c, random, pk.nsquare)
+            for combined_c, random in zip(combined_c_batch, randoms)
         ]
         challenges = [
-            random.randrange(pk.nsquare)  # TODO: should be hash
+            random.randrange(80)  # TODO: should be hash
             for _ in self.shares
         ]
         proofs = [
             random + challenge * share
             for random, challenge, share in zip(randoms, challenges, self.shares)
         ]
+
         # verify proofs
-        for verification, partial_decryption, left_commitment, right_commitment, challenge, proof in zip(
-            self.verifications, partial_decryptions, left_commitments, right_commitments, challenges, proofs
+        for verification, combined_c, combined_partial_decryption, left_commitment, right_commitment, challenge, proof in zip(
+            self.verifications, combined_c_batch, combined_partial_decryption_batch, left_commitments, right_commitments, challenges, proofs
         ):
             assert phe.util.powmod(self.v, proof, pk.nsquare) == (
                 left_commitment * phe.util.powmod(verification, challenge, pk.nsquare)
             ) % pk.nsquare
-            assert phe.util.powmod(c, proof, pk.nsquare) == (
-                right_commitment * phe.util.powmod(partial_decryption, challenge, pk.nsquare)
+            assert phe.util.powmod(combined_c, proof, pk.nsquare) == (
+                right_commitment * phe.util.powmod(combined_partial_decryption, challenge, pk.nsquare)
             ) % pk.nsquare
 
-        product = 1
-        for partial_decryption in partial_decryptions:
-            product = (product * partial_decryption) % pk.nsquare
-        clear = (product-1) // pk.n
-        if clear > pk.n // 2:
-            return clear - pk.n
-        return clear
+        # combine partial decryptions
+        clear_batch = []
+        for partial_decryptions in zip(*partial_decryptions_batch):
+            clear = (prod(partial_decryptions, pk.nsquare)-1) // pk.n
+            if clear > pk.n // 2:
+                clear = clear - pk.n
+            clear_batch.append(clear)
+        return clear_batch
 
 
 def share_paillier_secret_key(sk, n_parties):
