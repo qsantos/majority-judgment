@@ -417,68 +417,129 @@ class PaillierMajorityJudgement:
         """Switch T to binary representation"""
         self.T = self.lsbs_gate_batched(self.T)
 
-    def compute_challenge_results(self):
+    def compute_comparisons(self):
         """Run challenges between the candidates (each-other and themselves)"""
         T_elimination = self.T[:self.n_candidates]
         T_victory = self.T[self.n_candidates:]
 
-        left_challenger = [
-            T_victory[candidate]
-            for candidate in range(self.n_candidates)
-            for other_candidate in range(candidate)
-        ]
-        right_challenger = [
-            T_victory[other_candidate]
-            for candidate in range(self.n_candidates)
-            for other_candidate in range(candidate)
-        ]
-        # batch together comparisons for self-elimination and for challenges
         comparisons = self.gt_gate_batched(
-            T_elimination + left_challenger,
-            T_victory + right_challenger
+            T_victory + [
+                T_victory[candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(candidate)
+            ] + [
+                T_elimination[candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(candidate)
+            ],
+            T_elimination + [
+                T_victory[other_candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(candidate)
+            ] + [
+                T_elimination[other_candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(candidate)
+            ]
         )
-        self.debug(3, 'comparisons', comparisons)
 
-        self.self_elimination = comparisons[:self.n_candidates]
-        self.debug(3, 'self_elimination', self.self_elimination)
+        n = self.n_candidates
+        self.is_positive = comparisons[:n]
+        more_greater_flat = comparisons[n:n+n*(n-1)//2]
+        more_lower_flat = comparisons[n+n*(n-1)//2:]
 
-        # extend triangular comparison matrix to full matrix
-        challenges = [
+        # unflatten
+        self.more_greater = [
             [None]*self.n_candidates
             for _ in range(self.n_candidates)
         ]
-        i_comparison = self.n_candidates
+        self.more_lower = [
+            [None]*self.n_candidates
+            for _ in range(self.n_candidates)
+        ]
+        i = 0
         for candidate in range(self.n_candidates):
             for other_candidate in range(candidate):
-                comparison = comparisons[i_comparison]
-                challenges[candidate][other_candidate] = comparison
-                challenges[other_candidate][candidate] = self.ONE - comparison
-                i_comparison += 1
-        self.debug(3, 'challenges', challenges)
+                result = more_greater_flat[i]
+                self.more_greater[candidate][other_candidate] = result
+                self.more_greater[other_candidate][candidate] = self.ONE - result
+                result = more_lower_flat[i]
+                self.more_lower[candidate][other_candidate] = result
+                self.more_lower[other_candidate][candidate] = self.ONE - result
+                i += 1
 
-        # batch challenge results (challenge did happen and was lost)
-        self.challenge_results = self.and_gate_batched(
+        # batch together comparisons for self-elimination and for challenges
+        self.debug(3, 'is_positive', self.is_positive)
+        self.debug(3, 'more_greater', self.more_greater)
+        self.debug(3, 'more_lower', self.more_lower)
+
+    def compute_winner(self):
+        """Identify the winner (if any) using the results of the challenges"""
+
+        positivity_batch = self.and_gate_batched(
             [
-                self.ONE - self.self_elimination[other_candidate]
+                self.is_positive[candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(self.n_candidates)
+                if other_candidate != candidate
+            ] + [
+                self.ONE - self.is_positive[candidate]
                 for candidate in range(self.n_candidates)
                 for other_candidate in range(self.n_candidates)
                 if other_candidate != candidate
             ],
             [
-                challenges[other_candidate][candidate]
+                self.is_positive[other_candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(self.n_candidates)
+                if other_candidate != candidate
+            ] + [
+                self.ONE - self.is_positive[other_candidate]
                 for candidate in range(self.n_candidates)
                 for other_candidate in range(self.n_candidates)
                 if other_candidate != candidate
             ]
         )
-        self.debug(3, 'challenge_results', self.challenge_results)
 
-    def compute_winner(self):
-        """Identify the winner (if any) using the results of the challenges"""
-        # explicit formula (sum of simple ands version)
+        win_conditions_batch = self.and_gate_batched(
+            positivity_batch + [
+                self.is_positive[candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(self.n_candidates)
+                if other_candidate != candidate
+            ], [
+                self.more_greater[candidate][other_candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(self.n_candidates)
+                if other_candidate != candidate
+            ] + [
+                self.more_lower[other_candidate][candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(self.n_candidates)
+                if other_candidate != candidate
+            ] + [
+                self.ONE - self.is_positive[other_candidate]
+                for candidate in range(self.n_candidates)
+                for other_candidate in range(self.n_candidates)
+                if other_candidate != candidate
+            ]
+        )
+
+        n = self.n_candidates
+        when_both_positive = win_conditions_batch[n*(n-1):2*n*(n-1)]
+        when_both_negative = win_conditions_batch[2*n*(n-1):]
+        when_better_sign = win_conditions_batch[:n*(n-1)]
+
+        lose_conditions_batch = self.and_gate_batched(
+            self.and_gate_batched(
+                [self.ONE - x for x in when_better_sign],
+                [self.ONE - x for x in when_both_positive]),
+            [self.ONE - x for x in when_both_negative]
+        )
+
         n = self.n_candidates - 1  # length of each row
         lose_batch = [
-            self.self_elimination[i] + sum(self.challenge_results[i*n:(i+1)*n])
+            sum(lose_conditions_batch[i*n:(i+1)*n])
             for i in range(self.n_candidates)
         ]
         self.debug(3, 'lose_batch', lose_batch)
@@ -495,11 +556,8 @@ class PaillierMajorityJudgement:
         if debug_level >= 2:
             print('clear_lose_batch =', clear_lose_batch)
 
-        assert clear_lose_batch.count(0) <= 1
-        if 0 in clear_lose_batch:
-            self.winner = clear_lose_batch.index(0)
-        else:
-            self.winner = None
+        assert clear_lose_batch.count(0) == 1
+        self.winner = clear_lose_batch.index(0)
 
     def run(self, A):
         """Main method of the protocol"""
@@ -510,7 +568,7 @@ class PaillierMajorityJudgement:
         self.compute_right_to_median()
         self.compute_T()
         self.compute_bitrep_of_T()
-        self.compute_challenge_results()
+        self.compute_comparisons()
         self.compute_winner()
         return self.winner
 
@@ -541,18 +599,23 @@ def clear_majority_judgment(n_choices, n_candidates, A):
 
     # resolve tie
     while candidates:
-        if max(T_elimination) > max(T_victory):
+        if max(T_elimination) >= max(T_victory):
             # eliminate candidate
             eliminated = max(candidates, key=T_elimination.__getitem__)
             if debug_level >= 3:
                 print('Candidate {} eliminated'.format(eliminated))
             del candidates[candidates.index(eliminated)]
-            T_elimination[eliminated] = 0
-            T_victory[eliminated] = 0
+            T_elimination[eliminated] = -1
+            T_victory[eliminated] = -1
+
+            if T_victory.count(-1) == n_candidates - 1:  # one candidate left
+                # victory by default
+                winner = max(candidates, key=T_victory.__getitem__)
+                return winner
         else:
             winner = max(candidates, key=T_victory.__getitem__)
             return winner
-    return None
+    assert False  # there should always be a winner
 
 
 #inspired from http://umusebo.com/generate-n-random-numbers-whose-sum-equals-a-known-value/
