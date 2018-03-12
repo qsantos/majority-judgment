@@ -362,37 +362,37 @@ class PaillierMajorityJudgement:
         self.total_sum_of_candidate = flattened[:self.n_candidates]
         self.sums_of_candidate = flattened[self.n_candidates:]
 
-    def compute_right_to_median(self):
+    def compute_greater_than_median(self):
         """Compute median detection vector"""
-        # compare medians and partial sums to detect which values are left to
-        # the best median and which are right to the best median
-        right_to_candidate_median = self.gt_gate_batched(
-            self.sums_of_candidate,  # already flattened
+        # compare medians and partial sums to detect which values are greater
+        # than the best median
+        greater_than_candidate_median = self.gt_gate_batched(
             [
                 self.total_sum_of_candidate[candidate]
                 for candidate in range(self.n_candidates)
                 for _ in range(self.n_choices-1)
-            ]
+            ],
+            self.sums_of_candidate  # already flattened
         )
         # unflatten
         n = self.n_choices-1  # length of each row
-        right_to_candidate_median = [
-            right_to_candidate_median[i*n:(i+1)*n]
+        greater_than_candidate_median = [
+            greater_than_candidate_median[i*n:(i+1)*n]
             for i in range(self.n_candidates)
         ]
-        self.debug(3, 'right_to_candidate_median', right_to_candidate_median)
+        self.debug(3, 'greater_than_candidate_median', greater_than_candidate_median)
 
-        self.right_to_median = self.big_and_gate_batched([
+        self.greater_than_best_median = self.big_and_gate_batched([
             [
-                right_to_candidate_median[candidate][choice]
+                greater_than_candidate_median[candidate][choice]
                 for candidate in range(self.n_candidates)
             ] for choice in range(self.n_choices-1)
         ])
-        self.debug(3, 'right_to_median', self.right_to_median)
+        self.debug(3, 'greater_than_best_median', self.greater_than_best_median)
 
     def compute_T(self):
         """Compute intermediate tie-breaking matrix T"""
-        is_left_to_median = [self.ONE - v for v in self.right_to_median]
+        is_lower_than_best_median = [self.ONE - v for v in self.greater_than_best_median]
         conditioned_terms = self.and_gate_batched(
             [
                 self.A[candidate][choice]
@@ -403,8 +403,8 @@ class PaillierMajorityJudgement:
                 for candidate in range(self.n_candidates)
                 for choice in range(1, self.n_choices)
             ],
-            is_left_to_median * self.n_candidates +
-            self.right_to_median * self.n_candidates
+            self.greater_than_best_median * self.n_candidates +
+            is_lower_than_best_median * self.n_candidates
         )
         n = self.n_choices-1  # length of each row
         self.T = [
@@ -419,8 +419,8 @@ class PaillierMajorityJudgement:
 
     def compute_comparisons(self):
         """Run challenges between the candidates (each-other and themselves)"""
-        T_elimination = self.T[:self.n_candidates]
-        T_victory = self.T[self.n_candidates:]
+        T_victory = self.T[:self.n_candidates]
+        T_elimination = self.T[self.n_candidates:]
 
         comparisons = self.gt_gate_batched(
             T_victory + [
@@ -565,7 +565,7 @@ class PaillierMajorityJudgement:
         self.compute_precomputations()
         self.compute_sums()
         self.compute_bitrep_of_sums()
-        self.compute_right_to_median()
+        self.compute_greater_than_median()
         self.compute_T()
         self.compute_bitrep_of_T()
         self.compute_comparisons()
@@ -576,7 +576,7 @@ class PaillierMajorityJudgement:
 def clear_majority_judgment(n_choices, n_candidates, A):
     """Compute the result of a majority judgment election in the clear"""
     # find best median
-    best_median = 0
+    best_median = float('inf')
     for candidate, ballots in enumerate(A):
         median_votes_for_candidate = sum(ballots) // 2
         partial_sum = 0
@@ -587,15 +587,15 @@ def clear_majority_judgment(n_choices, n_candidates, A):
         candidate_median = choice
         if debug_level >= 3:
             print('Median of {} is {}'.format(candidate, candidate_median))
-        if candidate_median > best_median:
+        if candidate_median < best_median:
             best_median = candidate_median
 
     # compute T
     candidates = list(range(n_candidates))
-    T_elimination = [sum(row[:best_median]) for row in A]
-    T_victory = [sum(row[best_median+1:]) for row in A]
+    T_victory = [sum(row[:best_median]) for row in A]
+    T_elimination = [sum(row[best_median+1::]) for row in A]
     if debug_level >= 2:
-        print('T =', T_elimination, T_victory)
+        print('T =', T_victory, T_elimination)
 
     # resolve tie
     while candidates:
