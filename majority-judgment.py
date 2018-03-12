@@ -241,7 +241,7 @@ class PaillierMajorityJudgement:
             [x[0] + y[0] - 2*x[0]*y[0]]  # xi ^ yi
             for x, y in zip(x_batch, y_batch)
         ]
-        c_batch = [x[0]*y[0] for x, y in zip(x_batch, y_batch)]  # xi & yi
+        ciphertext_batch = [x[0]*y[0] for x, y in zip(x_batch, y_batch)]  # xi & yi
 
         # rest of the bits (one and_gate per bit)
         for i in range(1, len(x_batch[0])):
@@ -250,16 +250,16 @@ class PaillierMajorityJudgement:
                 for x, y in zip(x_batch, y_batch)
             ]
             xi_xor_yi_and_c_batch = \
-                self.and_gate_batched(xi_xor_yi_batch, c_batch)
+                self.and_gate_batched(xi_xor_yi_batch, ciphertext_batch)
             for k in range(len(x_batch)):
                 xi_xor_yi = xi_xor_yi_batch[k]
                 xi_xor_yi_and_c = xi_xor_yi_and_c_batch[k]
-                c = c_batch[k]
+                c = ciphertext_batch[k]
                 xi = x_batch[k][i]
                 yi = y_batch[k][i]
 
                 r = xi_xor_yi + c - 2*xi_xor_yi_and_c
-                c_batch[k] = (xi + yi + c - r) / 2
+                ciphertext_batch[k] = (xi + yi + c - r) / 2
                 ret_batch[k].append(r)
         return ret_batch
 
@@ -697,32 +697,32 @@ class SharedPaillerSecretKey:
 
     def decrypt_batched(self, x_batch):
         pk = x_batch[0].public_key
-        c_batch = [
+        ciphertext_batch = [
             x.ciphertext(be_secure=False)
             for x in x_batch
         ]
 
-        partial_decryptions_batch = [
-            [phe.util.powmod(c, share, pk.nsquare) for c in c_batch]
+        partial_decryption_batches = [
+            [phe.util.powmod(c, share, pk.nsquare) for c in ciphertext_batch]
             for share in self.shares
         ]
-        lambdas_batch = [
-            [random.randrange(2**80) for c in c_batch]
+        lambda_batches = [
+            [random.randrange(2**80) for c in ciphertext_batch]
             for share in self.shares
         ]
 
-        combined_c_batch = [
+        combined_ciphertexts = [
             prod(
                 phe.util.powmod(c, lambda_, pk.nsquare)
-                for c, lambda_ in zip(c_batch, lambdas)
-            ) for lambdas in lambdas_batch
+                for c, lambda_ in zip(ciphertext_batch, lambda_batch)
+            ) for lambda_batch in lambda_batches
         ]
 
-        combined_partial_decryption_batch = [
+        combined_partial_decryptions = [
             prod(
                 phe.util.powmod(partial_decryption, lambda_, pk.nsquare)
-                for partial_decryption, lambda_ in zip(partial_decryptions, lambdas)
-            ) for partial_decryptions, lambdas in zip(partial_decryptions_batch, lambdas_batch)
+                for partial_decryption, lambda_ in zip(partial_decryption_batch, lambda_batch)
+            ) for partial_decryption_batch, lambda_batch in zip(partial_decryption_batches, lambda_batches)
         ]
 
         # combined zero-knowledge proofs
@@ -736,7 +736,7 @@ class SharedPaillerSecretKey:
         ]
         right_commitments = [
             phe.util.powmod(combined_c, random, pk.nsquare)
-            for combined_c, random in zip(combined_c_batch, randoms)
+            for combined_c, random in zip(combined_ciphertexts, randoms)
         ]
         challenges = [
             random.randrange(80)  # TODO: should be hash
@@ -748,19 +748,22 @@ class SharedPaillerSecretKey:
         ]
 
         # verify proofs
-        for verification, combined_c, combined_partial_decryption, left_commitment, right_commitment, challenge, proof in zip(
-            self.verifications, combined_c_batch, combined_partial_decryption_batch, left_commitments, right_commitments, challenges, proofs
+        for verification, combined_c, combined_partial_decryptions, left_commitment, right_commitment, challenge, proof in zip(
+            self.verifications, combined_ciphertexts, combined_partial_decryptions, left_commitments, right_commitments, challenges, proofs
         ):
             assert phe.util.powmod(self.v, proof, pk.nsquare) == (
                 left_commitment * phe.util.powmod(verification, challenge, pk.nsquare)
             ) % pk.nsquare
             assert phe.util.powmod(combined_c, proof, pk.nsquare) == (
-                right_commitment * phe.util.powmod(combined_partial_decryption, challenge, pk.nsquare)
+                right_commitment * phe.util.powmod(combined_partial_decryptions, challenge, pk.nsquare)
             ) % pk.nsquare
+
+        # regroup the decryptions per ciphertext (originally per share)
+        partial_decryptions_batch = zip(*partial_decryption_batches)
 
         # combine partial decryptions
         clear_batch = []
-        for partial_decryptions in zip(*partial_decryptions_batch):
+        for partial_decryptions in partial_decryptions_batch:
             clear = (prod(partial_decryptions, pk.nsquare)-1) // pk.n
             if clear > pk.n // 2:
                 clear = clear - pk.n
