@@ -105,6 +105,7 @@ class PaillierMajorityJudgement:
                 x_batch[i] *= r
                 y_batch[i] *= r
         clear_y_batch = self.decrypt_gate_batched(y_batch)
+        assert all(y in [-1, 1] for y in clear_y_batch)
         return [x * clear_y for x, clear_y in zip(x_batch, clear_y_batch)]
 
     def and_gate_batched(self, x_batch, y_batch):
