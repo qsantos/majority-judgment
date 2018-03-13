@@ -14,6 +14,7 @@ Depends on `phe` (available through PIP):
     <https://github.com/n1analytics/python-paillier>
 """
 import math
+import time
 import random
 import argparse
 
@@ -658,9 +659,12 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
     # encrypted protocol
     if debug_level >= 2:
         print('Running majority judgment encrypted')
+    start = time.time()
     winner = election.run(A)
+    elapsed = time.time() - start
     if debug_level >= 1:
         print('Encrypted protocol winner is', winner)
+        print('Took: {:.1f} s'.format(elapsed))
 
     # show number of calls to oracle
     if debug_level >= 1:
@@ -825,6 +829,7 @@ def main():
     else:
         raise NotImplementedError
 
+    print('Keys generated')
     if args.parties > 0:
         sk = share_paillier_secret_key(sk, args.parties)
 
