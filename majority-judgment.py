@@ -10,16 +10,15 @@ Gamal or BGN). However, the output of the last LSBs can be El Gamal or BGN
 encryption, so that the last conditional gates could be replaced by offline
 pairings.
 
-Depends on `phe` (available through PIP):
-    <https://github.com/n1analytics/python-paillier>
+Depends on `gmpy2`
 """
 import math
 import time
 import random
 import argparse
 
-import phe
-
+import util
+import mock
 import paillier
 
 # debug_level = 0: quiet
@@ -684,7 +683,7 @@ def crt(residues, modulos):
     r = 0
     for residue, modulo in zip(residues, modulos):
         NX = product // modulo
-        r += residue * NX * phe.util.invert(NX, modulo)
+        r += residue * NX * util.invert(NX, modulo)
         r %= product
     return r
 
@@ -696,7 +695,7 @@ class SharedPaillerSecretKey:
         # (p + q - 1) / n ~= 2**1025 / 2**2048 = ε
         self.v = random.randrange(0, pk.nsquare)**2 % pk.nsquare
         self.verifications = [
-            phe.util.powmod(self.v, share, pk.nsquare)
+            util.powmod(self.v, share, pk.nsquare)
             for share in self.shares
         ]
 
@@ -708,7 +707,7 @@ class SharedPaillerSecretKey:
         ]
 
         partial_decryption_batches = [
-            [phe.util.powmod(c, share, pk.nsquare) for c in ciphertext_batch]
+            [util.powmod(c, share, pk.nsquare) for c in ciphertext_batch]
             for share in self.shares
         ]
         lambda_batches = [
@@ -718,14 +717,14 @@ class SharedPaillerSecretKey:
 
         combined_ciphertexts = [
             prod(
-                phe.util.powmod(c, lambda_, pk.nsquare)
+                util.powmod(c, lambda_, pk.nsquare)
                 for c, lambda_ in zip(ciphertext_batch, lambda_batch)
             ) for lambda_batch in lambda_batches
         ]
 
         combined_partial_decryptions = [
             prod(
-                phe.util.powmod(partial_decryption, lambda_, pk.nsquare)
+                util.powmod(partial_decryption, lambda_, pk.nsquare)
                 for partial_decryption, lambda_ in zip(partial_decryption_batch, lambda_batch)
             ) for partial_decryption_batch, lambda_batch in zip(partial_decryption_batches, lambda_batches)
         ]
@@ -736,11 +735,11 @@ class SharedPaillerSecretKey:
             for _ in self.shares
         ]
         left_commitments = [
-            phe.util.powmod(self.v, random, pk.nsquare)
+            util.powmod(self.v, random, pk.nsquare)
             for random in randoms
         ]
         right_commitments = [
-            phe.util.powmod(combined_c, random, pk.nsquare)
+            util.powmod(combined_c, random, pk.nsquare)
             for combined_c, random in zip(combined_ciphertexts, randoms)
         ]
         challenges = [
@@ -756,11 +755,11 @@ class SharedPaillerSecretKey:
         for verification, combined_c, combined_partial_decryptions, left_commitment, right_commitment, challenge, proof in zip(
             self.verifications, combined_ciphertexts, combined_partial_decryptions, left_commitments, right_commitments, challenges, proofs
         ):
-            assert phe.util.powmod(self.v, proof, pk.nsquare) == (
-                left_commitment * phe.util.powmod(verification, challenge, pk.nsquare)
+            assert util.powmod(self.v, proof, pk.nsquare) == (
+                left_commitment * util.powmod(verification, challenge, pk.nsquare)
             ) % pk.nsquare
-            assert phe.util.powmod(combined_c, proof, pk.nsquare) == (
-                right_commitment * phe.util.powmod(combined_partial_decryptions, challenge, pk.nsquare)
+            assert util.powmod(combined_c, proof, pk.nsquare) == (
+                right_commitment * util.powmod(combined_partial_decryptions, challenge, pk.nsquare)
             ) % pk.nsquare
 
         # regroup the decryptions per ciphertext (originally per share)
@@ -800,8 +799,8 @@ def main():
     parser.add_argument('--choices', '-n', default=5, type=int)
     parser.add_argument('--candidates', '-m', default=3, type=int)
     parser.add_argument('--bits', '-l', default=11, type=int)
-    parser.add_argument('--cryptosystem', '-c', default='phe',
-                        choices=['mock', 'phe'])
+    parser.add_argument('--cryptosystem', '-c', default='paillier',
+                        choices=['mock', 'paillier'])
     parser.add_argument('--simulations', default=1, type=int)
     parser.add_argument('seed', default=0, type=int, nargs='?')
     args = parser.parse_args()
@@ -809,24 +808,13 @@ def main():
     global debug_level
     debug_level = args.debug
 
-    # in phe, __truediv__ returns a float, so we redefine it for integers only
-    def __truediv__(self, other):
-        # assumes self is divisible by other
-        if other != 2:
-            # we only ever use halving, so let us keep it simple
-            raise NotImplementedError
-        if not hasattr(self.public_key, '_HALF_MOD_N'):
-            # compute 1/2 mod n
-            self.public_key._HALF_MOD_N = phe.util.invert(2, self.public_key.n)
-        half_self = self._raw_mul(self.public_key._HALF_MOD_N)
-        return phe.EncryptedNumber(self.public_key, half_self, self.exponent)
-    phe.EncryptedNumber.__truediv__ = __truediv__
-
     # select the cryptosystem
     if args.cryptosystem == 'mock':
-        pk, sk = paillier.mock_paillier_keypair()
-    elif args.cryptosystem == 'phe':
-        pk, sk = phe.paillier.generate_paillier_keypair()
+        pk, sk = mock.generate_mock_keypair()
+    elif args.cryptosystem == 'paillier':
+        # because safe primes generation is slow, we generate common primes
+        # when we are only benchmarking
+        pk, sk = paillier.generate_paillier_keypair(safe_primes=False)
     else:
         raise NotImplementedError
 
