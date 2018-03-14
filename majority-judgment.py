@@ -28,16 +28,6 @@ import paillier
 debug_level = 1
 
 
-def prod(l, m=None):
-    l = iter(l)
-    r = next(l)
-    for x in l:
-        r *= x
-        if m is not None:
-            r %= m
-    return r
-
-
 class PaillierMajorityJudgement:
     """Implementation of a Majority Judgement protocol with Paillier encryption
 
@@ -716,14 +706,14 @@ class SharedPaillerSecretKey:
         ]
 
         combined_ciphertexts = [
-            prod(
+            util.prod(
                 util.powmod(c, lambda_, pk.nsquare)
                 for c, lambda_ in zip(ciphertext_batch, lambda_batch)
             ) for lambda_batch in lambda_batches
         ]
 
         combined_partial_decryptions = [
-            prod(
+            util.prod(
                 util.powmod(partial_decryption, lambda_, pk.nsquare)
                 for partial_decryption, lambda_ in zip(partial_decryption_batch, lambda_batch)
             ) for partial_decryption_batch, lambda_batch in zip(partial_decryption_batches, lambda_batches)
@@ -768,7 +758,7 @@ class SharedPaillerSecretKey:
         # combine partial decryptions
         clear_batch = []
         for partial_decryptions in partial_decryptions_batch:
-            clear = (prod(partial_decryptions, pk.nsquare)-1) // pk.n
+            clear = (util.prod(partial_decryptions, pk.nsquare)-1) // pk.n
             if clear > pk.n // 2:
                 clear = clear - pk.n
             clear_batch.append(clear)

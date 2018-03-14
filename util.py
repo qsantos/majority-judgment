@@ -43,3 +43,13 @@ def crt(residues, modulos):
         r += residue * NX * invert(NX, modulo)
         r %= product
     return r
+
+
+def prod(l, m=None):
+    l = iter(l)
+    r = next(l)
+    for x in l:
+        r *= x
+        if m is not None:
+            r %= m
+    return r
