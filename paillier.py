@@ -108,7 +108,7 @@ class PaillierPublicKeyShare:
 
         # run Schnorr protocol
         commitment = yield
-        challenge = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        challenge = random.SystemRandom().randrange(2**80)
         proof = yield challenge
 
         # verify proof
@@ -121,7 +121,7 @@ class PaillierPublicKeyShare:
 
         # run Chaum-Pedersen protocol
         plaintext, left_commitment, right_commitment = yield
-        challenge = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        challenge = random.SystemRandom().randrange(2**80)
         proof = yield challenge  # proof is usually noted s
 
         # verify proof
@@ -148,7 +148,7 @@ class PaillierPublicKeyShare:
 
         # run Chaum-Pedersen protocol
         left_commitment, right_commitment = yield lambdas
-        challenge = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        challenge = random.SystemRandom().randrange(2**80)
         proof = yield challenge  # proof is usually noted s
 
         # compute combined plaintext and ciphertext for verification
