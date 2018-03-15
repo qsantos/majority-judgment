@@ -609,11 +609,9 @@ def clear_majority_judgment(n_choices, n_candidates, A):
     assert False  # there should always be a winner
 
 
-#inspired from http://umusebo.com/generate-n-random-numbers-whose-sum-equals-a-known-value/
-
-
 def random_numbers_totaling(total, count):
     """Return count random numbers whose sum equals total"""
+    # inspired from <http://umusebo.com/generate-n-random-numbers-whose>
     # divide [0, total] in count random subranges
     fenceposts = sorted(random.choice(range(total+1)) for _ in range(count-1))
     # return the lengths of these subranges
