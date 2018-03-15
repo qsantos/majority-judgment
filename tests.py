@@ -4,6 +4,7 @@ import unittest
 import util
 import mock
 import paillier
+import majorityjudgment
 
 _N_BITS = 103
 
@@ -166,6 +167,46 @@ class TestPaillierShared(unittest.TestCase):
         verifier = pk_shares[1].verify_decrypt_batched(ciphertext_batch)
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
 
+
+class TestClearMajorityJudgment(unittest.TestCase):
+    def test_obvious(self):
+        self.assertEqual(0, majorityjudgment.clear_majority_judgment([
+            [1, 0],
+            [0, 1],
+        ]))
+        self.assertEqual(1, majorityjudgment.clear_majority_judgment([
+            [0, 1],
+            [1, 0],
+        ]))
+
+    def test_examples(self):
+        # from <https://en.wikipedia.org/wiki/Majority_Judgment>
+        self.assertEqual(1, majorityjudgment.clear_majority_judgment([
+            [42, 0, 0, 58],  # Menphis
+            [26, 0, 74, 0],  # Nashville (winner)
+            [15, 17, 26, 42],  # Chattanooga
+            [17, 15, 26, 52],  # Knoxville
+        ]))
+        # from <https://fr.wikipedia.org/wiki/Jugement_majoritaire>
+        self.assertEqual(0, majorityjudgment.clear_majority_judgment([
+            [17.42, 21.28, 19.71, 9.12, 17.63, 14.84],  # candidate A
+            [17.05, 20.73, 12.95, 13.42, 11.58, 24.27],  # candidate B
+        ]))
+        # from Election by Majority Judgement: Experimental Evidence, p17
+        self.assertEqual(3, majorityjudgment.clear_majority_judgment([
+            [4.1, 9.9, 16.3, 16.0, 22.6, 31.1],  # Besancenot
+            [2.5, 7.6, 12.5, 20.6, 26.4, 30.4],  # Buffet
+            [0.5, 1.0, 3.9, 9.5, 24.9, 60.4],  # Schivardi
+            [13.6, 30.7, 25.1, 14.8, 8.4, 7.4],  # Bayrou (winner)
+            [1.5, 6.0, 11.4, 16.0, 25.7, 39.5],  # Bové
+            [2.9, 9.3, 17.5, 23.7, 26.1, 20.5],  # Voynet
+            [2.4, 6.4, 8.7, 11.3, 15.8, 55.5],  # Villiers
+            [16.7, 22.7, 19.1, 16.8, 12.2, 12.6],  # Royal
+            [0.3, 1.8, 5.3, 11.0, 26.7, 55.0],  # Nihous
+            [3.0, 4.6, 6.2, 6.5, 5.4, 74.4],  # Le Pen
+            [2.1, 5.3, 10.2, 16.6, 25.9, 40.1],  # Laguiller
+            [19.1, 19.8, 14.3, 11.5, 7.1, 28.2],  # Sarokzy
+        ]))
 
 if __name__ == '__main__':
     unittest.main()
