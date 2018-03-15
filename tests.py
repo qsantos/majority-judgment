@@ -225,6 +225,7 @@ class TestPaillierMajorityJudgment(unittest.TestCase, MajorityJudgmentFixture):
         n_choices = len(A[0])
         n_bits = max(x for row in A for x in row).bit_length() + 1
         election = majorityjudgment.PaillierMajorityJudgement(pk, sk, n_choices, n_candidates, n_bits)
+        election.precomputation()
 
         # encrypt the ballots
         A = [[election.pk.encrypt(value) for value in row] for row in A]

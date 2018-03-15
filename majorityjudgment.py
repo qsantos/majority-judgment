@@ -314,7 +314,7 @@ class PaillierMajorityJudgement:
             return
         print('{} = {}'.format(name, self.debug_decrypt(value)))
 
-    def compute_precomputations(self):
+    def precomputation(self):
         """Pre-compute what can be pre-computed
 
         In practice, this means generating encrypted random values, which do
@@ -553,7 +553,6 @@ class PaillierMajorityJudgement:
     def run(self, A):
         """Main method of the protocol"""
         self.A = A
-        self.compute_precomputations()
         self.compute_sums()
         self.compute_bitrep_of_sums()
         self.compute_greater_than_median()
@@ -642,6 +641,7 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
 
     election = PaillierMajorityJudgement(pk, sk, n_choices, n_candidates,
                                          n_bits)
+    election.precomputation()
 
     # encrypt the ballots
     A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
