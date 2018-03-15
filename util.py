@@ -64,3 +64,12 @@ def run_protocol(alice, bob):
             message = alice.send(message)
     except StopIteration as e:
         return e.value
+
+
+def random_numbers_totaling(total, count):
+    """Return count random numbers whose sum equals total"""
+    # inspired from <http://umusebo.com/generate-n-random-numbers-whose>
+    # divide [0, total] in count random subranges
+    fenceposts = sorted(random.choice(range(total+1)) for _ in range(count-1))
+    # return the lengths of these subranges
+    return [b - a for a, b in zip([0] + fenceposts, fenceposts + [total])]
