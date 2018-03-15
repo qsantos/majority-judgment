@@ -314,7 +314,7 @@ class PaillierMajorityJudgement:
             return
         print('{} = {}'.format(name, self.debug_decrypt(value)))
 
-    def precomputation(self):
+    def precompute(self):
         """Pre-compute what can be pre-computed
 
         In practice, this means generating encrypted random values, which do
@@ -641,7 +641,7 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
 
     election = PaillierMajorityJudgement(pk, sk, n_choices, n_candidates,
                                          n_bits)
-    election.precomputation()
+    election.precompute()
 
     # encrypt the ballots
     A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
@@ -710,6 +710,12 @@ def main():
         pk, sk = paillier.generate_paillier_keypair(safe_primes=False)
     else:
         pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(args.parties, safe_primes=False)
+
+        # pre-compute left commitments
+        n_batched_decryptions = 4*args.bits + args.candidates.bit_length() + 6
+        for sk_share in sk_shares:
+            sk_share.precompute(n_batched_decryptions)
+
         sk = UnsharedPaillerSecretKey(pk, pk_shares, sk_shares)
     print('Keys generated')
 

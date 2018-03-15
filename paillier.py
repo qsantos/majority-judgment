@@ -191,10 +191,27 @@ class PaillierSecretKeyShare:
         self.public_key = public_key
         self.key_share = key_share
 
+    def precompute(self, n_uses):
+        pk = self.public_key
+        randoms = [
+            random.SystemRandom().randrange(pk.nsquare << 160)
+            for _ in range(n_uses)
+        ]
+        self.precomputed_values = [
+            (r, util.powmod(pk.verification_base, r, pk.nsquare))
+            for r in randoms
+        ]
+
     def prove_knowledge(self):
         pk = self.public_key
-        r = random.SystemRandom().randrange(pk.nsquare << 160)
-        commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+
+        if hasattr(self, 'precomputed_values'):
+            # raises an exception if not enough precomputations were forecast
+            r, commitment = self.precomputed_values.pop()
+        else:
+            r = random.SystemRandom().randrange(pk.nsquare << 160)
+            commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+
         challenge = yield commitment
         assert challenge < 2**80
         yield r + challenge * self.key_share
@@ -207,11 +224,16 @@ class PaillierSecretKeyShare:
         pk = self.public_key
         plaintext = self.decrypt(ciphertext)
 
+        if hasattr(self, 'precomputed_values'):
+            # raises an exception if not enough precomputations were forecast
+            r, left_commitment = self.precomputed_values.pop()
+        else:
+            r = random.SystemRandom().randrange(pk.nsquare << 160)
+            left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
         #   * plaintext = ciphertext**key_share
-        r = random.SystemRandom().randrange(pk.nsquare << 160)
-        left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
         right_commitment = util.powmod(ciphertext.raw_value, r, pk.nsquare)
         challenge = yield plaintext, left_commitment, right_commitment
         assert challenge < 2**80
@@ -230,11 +252,16 @@ class PaillierSecretKeyShare:
             for ciphertext, lambda_ in zip(ciphertexts, lambdas)
         )
 
+        if hasattr(self, 'precomputed_values'):
+            # raises an exception if not enough precomputations were forecast
+            r, left_commitment = self.precomputed_values.pop()
+        else:
+            r = random.SystemRandom().randrange(pk.nsquare << 160)
+            left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
         #   * combined_plaintext = combined_ciphertext**key_share
-        r = random.SystemRandom().randrange(pk.nsquare << 160)
-        left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
         right_commitment = util.powmod(combined_ciphertext, r, pk.nsquare)
         challenge = yield left_commitment, right_commitment
         assert challenge < 2**80

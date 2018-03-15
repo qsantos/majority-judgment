@@ -114,6 +114,20 @@ class TestPaillierShared(unittest.TestCase):
         verifier = pk_shares[1].verify_knowledge()
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
 
+        # with pre-computations
+        for pk_share, sk_share in zip(pk_shares, sk_shares):
+            sk_share.precompute(1)
+
+            # ok
+            prover = sk_share.prove_knowledge()
+            verifier = pk_share.verify_knowledge()
+            util.run_protocol(prover, verifier)
+
+            # not enough pre-computations
+            prover = sk_share.prove_knowledge()
+            verifier = pk_share.verify_knowledge()
+            self.assertRaises(IndexError, util.run_protocol, prover, verifier)
+
     def test_decryption(self):
         pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(3, _N_BITS)
         ciphertext = pk.encrypt(-42)
@@ -145,6 +159,27 @@ class TestPaillierShared(unittest.TestCase):
         verifier = pk_shares[1].verify_decrypt(ciphertext)
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
 
+        # with pre-computations
+        for sk_share in sk_shares:
+            sk_share.precompute(1)
+
+        # ok
+        decryption_shares = [
+            util.run_protocol(
+                sk_share.prove_decrypt(ciphertext),
+                pk_share.verify_decrypt(ciphertext),
+            )
+            for pk_share, sk_share in zip(pk_shares, sk_shares)
+        ]
+        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+        self.assertEqual(plaintext, 42)
+
+        # not enough pre-computations
+        for pk_share, sk_share in zip(pk_shares, sk_shares):
+            prover = sk_share.prove_decrypt(ciphertext)
+            verifier = pk_share.verify_decrypt(ciphertext)
+            self.assertRaises(IndexError, util.run_protocol, prover, verifier)
+
     def test_proof_of_decryption_batched(self):
         pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(3, _N_BITS)
         ciphertext_batch = [pk.encrypt(i) for i in range(100)]
@@ -166,6 +201,29 @@ class TestPaillierShared(unittest.TestCase):
         prover = sk_shares[0].prove_decrypt_batched(ciphertext_batch)
         verifier = pk_shares[1].verify_decrypt_batched(ciphertext_batch)
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+
+        # with pre-computations
+        for sk_share in sk_shares:
+            sk_share.precompute(1)
+
+        # ok
+        decryption_share_batches = [
+            util.run_protocol(
+                sk_share.prove_decrypt_batched(ciphertext_batch),
+                pk_share.verify_decrypt_batched(ciphertext_batch),
+            )
+            for pk_share, sk_share in zip(pk_shares, sk_shares)
+        ]
+        decryption_shares_batch = zip(*decryption_share_batches)
+        for i, decryption_shares in enumerate(decryption_shares_batch):
+            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+            self.assertEqual(plaintext, i)
+
+        # not enough pre-computations
+        for pk_share, sk_share in zip(pk_shares, sk_shares):
+            prover = sk_share.prove_decrypt_batched(ciphertext_batch)
+            verifier = pk_share.verify_decrypt_batched(ciphertext_batch)
+            self.assertRaises(IndexError, util.run_protocol, prover, verifier)
 
 
 class MajorityJudgmentFixture:
@@ -225,7 +283,7 @@ class TestPaillierMajorityJudgment(unittest.TestCase, MajorityJudgmentFixture):
         n_choices = len(A[0])
         n_bits = max(x for row in A for x in row).bit_length() + 1
         election = majorityjudgment.PaillierMajorityJudgement(pk, sk, n_choices, n_candidates, n_bits)
-        election.precomputation()
+        election.precompute()
 
         # encrypt the ballots
         A = [[election.pk.encrypt(value) for value in row] for row in A]
