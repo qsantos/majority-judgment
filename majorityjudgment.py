@@ -640,10 +640,10 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
     if debug_level >= 1:
         print('Clear protocol winner is', clear_winner)
 
-    # encrypt the ballots
     election = PaillierMajorityJudgement(pk, sk, n_choices, n_candidates,
                                          n_bits)
 
+    # encrypt the ballots
     A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
 
     # encrypted protocol

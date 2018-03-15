@@ -168,45 +168,69 @@ class TestPaillierShared(unittest.TestCase):
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
 
 
-class TestClearMajorityJudgment(unittest.TestCase):
+class MajorityJudgmentFixture:
     def test_obvious(self):
-        self.assertEqual(0, majorityjudgment.clear_majority_judgment([
+        self.assertEqual(0, self.run_election([
             [1, 0],
             [0, 1],
         ]))
-        self.assertEqual(1, majorityjudgment.clear_majority_judgment([
+        self.assertEqual(1, self.run_election([
             [0, 1],
             [1, 0],
         ]))
 
     def test_examples(self):
         # from <https://en.wikipedia.org/wiki/Majority_Judgment>
-        self.assertEqual(1, majorityjudgment.clear_majority_judgment([
+        self.assertEqual(1, self.run_election([
             [42, 0, 0, 58],  # Menphis
             [26, 0, 74, 0],  # Nashville (winner)
             [15, 17, 26, 42],  # Chattanooga
             [17, 15, 26, 52],  # Knoxville
         ]))
         # from <https://fr.wikipedia.org/wiki/Jugement_majoritaire>
-        self.assertEqual(0, majorityjudgment.clear_majority_judgment([
-            [17.42, 21.28, 19.71, 9.12, 17.63, 14.84],  # candidate A
-            [17.05, 20.73, 12.95, 13.42, 11.58, 24.27],  # candidate B
+        # in basis points
+        self.assertEqual(0, self.run_election([
+            [1742, 2128, 1971, 912, 1763, 1484],  # candidate A
+            [1705, 2073, 1295, 1342, 1158, 2427],  # candidate B
         ]))
         # from Election by Majority Judgement: Experimental Evidence, p17
-        self.assertEqual(3, majorityjudgment.clear_majority_judgment([
-            [4.1, 9.9, 16.3, 16.0, 22.6, 31.1],  # Besancenot
-            [2.5, 7.6, 12.5, 20.6, 26.4, 30.4],  # Buffet
-            [0.5, 1.0, 3.9, 9.5, 24.9, 60.4],  # Schivardi
-            [13.6, 30.7, 25.1, 14.8, 8.4, 7.4],  # Bayrou (winner)
-            [1.5, 6.0, 11.4, 16.0, 25.7, 39.5],  # Bové
-            [2.9, 9.3, 17.5, 23.7, 26.1, 20.5],  # Voynet
-            [2.4, 6.4, 8.7, 11.3, 15.8, 55.5],  # Villiers
-            [16.7, 22.7, 19.1, 16.8, 12.2, 12.6],  # Royal
-            [0.3, 1.8, 5.3, 11.0, 26.7, 55.0],  # Nihous
-            [3.0, 4.6, 6.2, 6.5, 5.4, 74.4],  # Le Pen
-            [2.1, 5.3, 10.2, 16.6, 25.9, 40.1],  # Laguiller
-            [19.1, 19.8, 14.3, 11.5, 7.1, 28.2],  # Sarokzy
+        # in per mille
+        self.assertEqual(3, self.run_election([
+            [41, 99, 163, 160, 226, 311],  # Besancenot
+            [25, 76, 125, 206, 264, 304],  # Buffet
+            [5, 10, 39, 95, 249, 604],  # Schivardi
+            [136, 307, 251, 148, 84, 74],  # Bayrou (winner)
+            [15, 60, 114, 160, 257, 395],  # Bové
+            [29, 93, 175, 237, 261, 205],  # Voynet
+            [24, 64, 87, 113, 158, 555],  # Villiers
+            [167, 227, 191, 168, 122, 126],  # Royal
+            [3, 18, 53, 110, 267, 550],  # Nihous
+            [30, 46, 62, 65, 54, 744],  # Le Pen
+            [21, 53, 102, 166, 259, 401],  # Laguiller
+            [191, 198, 143, 115, 71, 282],  # Sarokzy
         ]))
+
+
+class TestClearMajorityJudgment(unittest.TestCase, MajorityJudgmentFixture):
+    run_election = staticmethod(majorityjudgment.clear_majority_judgment)
+
+
+class TestPaillierMajorityJudgment(unittest.TestCase, MajorityJudgmentFixture):
+    @staticmethod
+    def run_election(A):
+        pk, sk = mock.generate_mock_keypair()
+
+        # prepare election
+        n_candidates = len(A)
+        n_choices = len(A[0])
+        n_bits = max(x for row in A for x in row).bit_length() + 1
+        election = majorityjudgment.PaillierMajorityJudgement(pk, sk, n_choices, n_candidates, n_bits)
+
+        # encrypt the ballots
+        A = [[election.pk.encrypt(value) for value in row] for row in A]
+
+        return election.run(A)
+
 
 if __name__ == '__main__':
     unittest.main()
