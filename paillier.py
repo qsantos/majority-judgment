@@ -120,7 +120,7 @@ class PaillierPublicKeyShare:
         pk = self.public_key
 
         # run Chaum-Pedersen protocol
-        plaintext, left_commitment, right_commitment = yield
+        partial_decryption, left_commitment, right_commitment = yield
         challenge = random.SystemRandom().randrange(2**80)
         proof = yield challenge  # proof is usually noted s
 
@@ -131,34 +131,34 @@ class PaillierPublicKeyShare:
             raise InvalidProof
         # check that x^s = t_2 * m^c
         if util.powmod(ciphertext.raw_value, proof, pk.nsquare) != \
-                right_commitment * util.powmod(plaintext, challenge, pk.nsquare) % pk.nsquare:
+                right_commitment * util.powmod(partial_decryption, challenge, pk.nsquare) % pk.nsquare:
             raise InvalidProof
 
-        return plaintext
+        return partial_decryption
 
-    def verify_decrypt_batched(self, ciphertexts):
+    def verify_decrypt_batched(self, ciphertext_batch):
         pk = self.public_key
 
-        # generate random λ_i *after* the plaintexts have been provided
-        plaintexts = yield
-        lambdas = [
+        # generate random λ_i *after* partial decryptions have been provided
+        partial_decryption_batch = yield
+        lambda_batch = [
             random.SystemRandom().randrange(2**80)
-            for _ in ciphertexts
+            for _ in ciphertext_batch
         ]
 
         # run Chaum-Pedersen protocol
-        left_commitment, right_commitment = yield lambdas
+        left_commitment, right_commitment = yield lambda_batch
         challenge = random.SystemRandom().randrange(2**80)
         proof = yield challenge  # proof is usually noted s
 
         # compute combined plaintext and ciphertext for verification
         combined_plaintext = util.prod(
             util.powmod(plaintext, lambda_, pk.nsquare)
-            for plaintext, lambda_ in zip(plaintexts, lambdas)
+            for plaintext, lambda_ in zip(partial_decryption_batch, lambda_batch)
         )
         combined_ciphertext = util.prod(
             util.powmod(ciphertext.raw_value, lambda_, pk.nsquare)
-            for ciphertext, lambda_ in zip(ciphertexts, lambdas)
+            for ciphertext, lambda_ in zip(ciphertext_batch, lambda_batch)
         )
 
         # verify proof
@@ -171,7 +171,7 @@ class PaillierPublicKeyShare:
                 right_commitment * util.powmod(combined_plaintext, challenge, pk.nsquare) % pk.nsquare:
             raise InvalidProof
 
-        return plaintexts
+        return partial_decryption_batch
 
     @staticmethod
     def L(u, n):
@@ -222,7 +222,7 @@ class PaillierSecretKeyShare:
 
     def prove_decrypt(self, ciphertext):
         pk = self.public_key
-        plaintext = self.decrypt(ciphertext)
+        partial_decryption = self.decrypt(ciphertext)
 
         if hasattr(self, 'precomputed_values'):
             # raises an exception if not enough precomputations were forecast
@@ -233,23 +233,26 @@ class PaillierSecretKeyShare:
 
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
-        #   * plaintext = ciphertext**key_share
+        #   * partial_decryption = ciphertext**key_share
         right_commitment = util.powmod(ciphertext.raw_value, r, pk.nsquare)
-        challenge = yield plaintext, left_commitment, right_commitment
+        challenge = yield partial_decryption, left_commitment, right_commitment
         assert challenge < 2**80
         yield r + challenge * self.key_share
 
-    def prove_decrypt_batched(self, ciphertexts):
+    def prove_decrypt_batched(self, ciphertext_batch):
         pk = self.public_key
-        plaintexts = [self.decrypt(ciphertext) for ciphertext in ciphertexts]
+        partial_decryption_batch = [
+            self.decrypt(ciphertext)
+            for ciphertext in ciphertext_batch
+        ]
 
         # to aggregate ZKPs, the verifier provides λ_i *after* the plaintexts
         # have been provided; then combined_ciphertext = ∏ ciphertext^{λ_i}
         # and combined_plaintext = ∏ m^{λ_i} (not needed for prover)
-        lambdas = yield plaintexts
+        lambda_batch = yield partial_decryption_batch
         combined_ciphertext = util.prod(
             util.powmod(ciphertext.raw_value, lambda_, pk.nsquare)
-            for ciphertext, lambda_ in zip(ciphertexts, lambdas)
+            for ciphertext, lambda_ in zip(ciphertext_batch, lambda_batch)
         )
 
         if hasattr(self, 'precomputed_values'):
