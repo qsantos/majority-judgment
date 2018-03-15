@@ -564,8 +564,10 @@ class PaillierMajorityJudgement:
         return self.winner
 
 
-def clear_majority_judgment(n_choices, n_candidates, A):
+def clear_majority_judgment(A):
     """Compute the result of a majority judgment election in the clear"""
+    n_candidates = len(A)
+
     # find best median
     best_median = float('inf')
     for candidate, ballots in enumerate(A):
@@ -634,7 +636,7 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
     # clear protocol
     if debug_level >= 2:
         print('Running majority judgment in the clear')
-    clear_winner = clear_majority_judgment(n_choices, n_candidates, clear_A)
+    clear_winner = clear_majority_judgment(clear_A)
     if debug_level >= 1:
         print('Clear protocol winner is', clear_winner)
 
