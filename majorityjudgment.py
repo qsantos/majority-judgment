@@ -695,8 +695,6 @@ def main():
     parser.add_argument('--choices', '-n', default=5, type=int)
     parser.add_argument('--candidates', '-m', default=3, type=int)
     parser.add_argument('--bits', '-l', default=11, type=int)
-    parser.add_argument('--cryptosystem', '-c', default='paillier',
-                        choices=['mock', 'paillier'])
     parser.add_argument('--simulations', default=1, type=int)
     parser.add_argument('seed', default=0, type=int, nargs='?')
     args = parser.parse_args()
@@ -704,17 +702,15 @@ def main():
     global debug_level
     debug_level = args.debug
 
-    # select the cryptosystem
+    # generate the keys
     # NOTE: we do not use safe primes for benchmarking due to slow generation
-    if args.parties > 0:
-        pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(args.parties, safe_primes=False)
-        sk = UnsharedPaillerSecretKey(pk, pk_shares, sk_shares)
-    elif args.cryptosystem == 'mock':
+    if args.parties < 0:
         pk, sk = mock.generate_mock_keypair()
-    elif args.cryptosystem == 'paillier':
+    elif args.parties == 0:
         pk, sk = paillier.generate_paillier_keypair(safe_primes=False)
     else:
-        raise NotImplementedError
+        pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(args.parties, safe_primes=False)
+        sk = UnsharedPaillerSecretKey(pk, pk_shares, sk_shares)
     print('Keys generated')
 
     max_simulations = args.simulations if args.simulations else float('inf')
