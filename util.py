@@ -45,11 +45,11 @@ def crt(residues, modulos):
     return r
 
 
-def prod(l, m=None):
-    l = iter(l)
-    r = next(l)
-    for x in l:
-        r *= x
-        if m is not None:
-            r %= m
-    return r
+def prod(elements_iterable, modulus=None):
+    elements_iterator = iter(elements_iterable)
+    product = next(elements_iterator)
+    for element in elements_iterator:
+        product *= element
+        if modulus is not None:
+            product %= modulus
+    return product
