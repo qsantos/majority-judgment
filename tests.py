@@ -98,5 +98,74 @@ class TestPaillier(unittest.TestCase, PartiallyHomomorphicSchemeFixture):
         self.assertRaises(ValueError, pk.encrypt(1).__add__, pkk.encrypt(2))
 
 
+class TestPaillierShared(unittest.TestCase):
+    def test_proof_of_knowledge(self):
+        pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(3, _N_BITS)
+
+        # valid proofs
+        for pk_share, sk_share in zip(pk_shares, sk_shares):
+            prover = sk_share.prove_knowledge()
+            verifier = pk_share.verify_knowledge()
+            util.run_protocol(prover, verifier)
+
+        # invalid proof
+        prover = sk_shares[0].prove_knowledge()
+        verifier = pk_shares[1].verify_knowledge()
+        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+
+    def test_decryption(self):
+        pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(3, _N_BITS)
+        ciphertext = pk.encrypt(-42)
+
+        decryption_shares = [
+            sk_share.decrypt(ciphertext)
+            for sk_share in sk_shares
+        ]
+        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+        self.assertEqual(plaintext, -42)
+
+    def test_proof_of_decryption(self):
+        pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(3, _N_BITS)
+        ciphertext = pk.encrypt(42)
+
+        # valid decryption
+        decryption_shares = [
+            util.run_protocol(
+                sk_share.prove_decrypt(ciphertext),
+                pk_share.verify_decrypt(ciphertext),
+            )
+            for pk_share, sk_share in zip(pk_shares, sk_shares)
+        ]
+        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+        self.assertEqual(plaintext, 42)
+
+        # invalid decryption
+        prover = sk_shares[0].prove_decrypt(ciphertext)
+        verifier = pk_shares[1].verify_decrypt(ciphertext)
+        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+
+    def test_proof_of_decryption_batched(self):
+        pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(3, _N_BITS)
+        ciphertext_batch = [pk.encrypt(i) for i in range(100)]
+
+        # valid decryptions
+        decryption_share_batches = [
+            util.run_protocol(
+                sk_share.prove_decrypt_batched(ciphertext_batch),
+                pk_share.verify_decrypt_batched(ciphertext_batch),
+            )
+            for pk_share, sk_share in zip(pk_shares, sk_shares)
+        ]
+        decryption_shares_batch = zip(*decryption_share_batches)
+        for i, decryption_shares in enumerate(decryption_shares_batch):
+            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+            self.assertEqual(plaintext, i)
+
+        # invalid decryptions
+        prover = sk_shares[0].prove_decrypt_batched(ciphertext_batch)
+        verifier = pk_shares[1].verify_decrypt_batched(ciphertext_batch)
+        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+
+
 if __name__ == '__main__':
     unittest.main()

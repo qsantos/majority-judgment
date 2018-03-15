@@ -12,6 +12,40 @@ def generate_paillier_keypair(n_bits=2048, safe_primes=True):
     return sk.public_key, sk
 
 
+def generate_paillier_keypair_shares(n_shares, n_bits=2048, safe_primes=True):
+    pk, sk = generate_paillier_keypair(n_bits, safe_primes)
+    lambda_ = (sk.p-1)*(sk.q-1) // 2  # λ(n) = lcm(p-1, q-1); p, q safe primes
+    exponent = util.crt([0, 1], [lambda_, pk.n])
+
+    # the base must be a quadratic residue
+    pk.verification_base = random.randrange(pk.nsquare)**2 % pk.nsquare
+
+    # split the secret exponent into required number of shares
+    key_shares = [
+        random.randrange(pk.n * lambda_)
+        for _ in range(n_shares-1)
+    ]
+    key_shares.append((exponent - sum(key_shares)) % (pk.n * lambda_))
+
+    # compute corresponding verification elements
+    verifications = [
+        util.powmod(pk.verification_base, key_share, pk.nsquare)
+        for key_share in key_shares
+    ]
+
+    # create public and private key shares
+    pk_shares = [
+        PaillierPublicKeyShare(pk, verification)
+        for verification in verifications
+    ]
+    sk_shares = [
+        PaillierSecretKeyShare(pk, key_share)
+        for key_share in key_shares
+    ]
+
+    return pk, pk_shares, sk_shares
+
+
 class PaillierPublicKey:
     def __init__(self, n, g):
         self.n = n
@@ -58,6 +92,150 @@ class PaillierSecretKey:
         if relative and plaintext >= pk.n//2:
             plaintext -= pk.n
         return int(plaintext)
+
+
+class InvalidProof(Exception):
+    pass
+
+
+class PaillierPublicKeyShare:
+    def __init__(self, public_key, verification):
+        self.public_key = public_key  # Paillier public key
+        self.verification = verification  # v_i = v^{s_i}
+
+    def verify_knowledge(self):
+        pk = self.public_key
+
+        # run Schnorr protocol
+        commitment = yield
+        challenge = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        proof = yield challenge
+
+        # verify proof
+        if util.powmod(pk.verification_base, proof, pk.nsquare) != \
+                commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
+            raise InvalidProof
+
+    def verify_decrypt(self, ciphertext):
+        pk = self.public_key
+
+        # run Chaum-Pedersen protocol
+        plaintext, left_commitment, right_commitment = yield
+        challenge = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        proof = yield challenge  # proof is usually noted s
+
+        # verify proof
+        # check that v^s = t_1 * v_i^c
+        if util.powmod(pk.verification_base, proof, pk.nsquare) != \
+                left_commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
+            raise InvalidProof
+        # check that x^s = t_2 * m^c
+        if util.powmod(ciphertext.raw_value, proof, pk.nsquare) != \
+                right_commitment * util.powmod(plaintext, challenge, pk.nsquare) % pk.nsquare:
+            raise InvalidProof
+
+        return plaintext
+
+    def verify_decrypt_batched(self, ciphertexts):
+        pk = self.public_key
+
+        # generate random λ_i *after* the plaintexts have been provided
+        plaintexts = yield
+        lambdas = [
+            random.SystemRandom().randrange(2**80)
+            for _ in ciphertexts
+        ]
+
+        # run Chaum-Pedersen protocol
+        left_commitment, right_commitment = yield lambdas
+        challenge = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        proof = yield challenge  # proof is usually noted s
+
+        # compute combined plaintext and ciphertext for verification
+        combined_plaintext = util.prod(
+            util.powmod(plaintext, lambda_, pk.nsquare)
+            for plaintext, lambda_ in zip(plaintexts, lambdas)
+        )
+        combined_ciphertext = util.prod(
+            util.powmod(ciphertext.raw_value, lambda_, pk.nsquare)
+            for ciphertext, lambda_ in zip(ciphertexts, lambdas)
+        )
+
+        # verify proof
+        # check that v^s = t_1 * v_i^c
+        if util.powmod(pk.verification_base, proof, pk.nsquare) != \
+                left_commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
+            raise InvalidProof
+        # check that x^s = t_2 * m^c
+        if util.powmod(combined_ciphertext, proof, pk.nsquare) != \
+                right_commitment * util.powmod(combined_plaintext, challenge, pk.nsquare) % pk.nsquare:
+            raise InvalidProof
+
+        return plaintexts
+
+    @staticmethod
+    def L(u, n):
+        return (u - 1) // n
+
+    @staticmethod
+    def assemble_decryption_shares(shares, decryption_shares, relative=True):
+        pk = shares[0].public_key
+        plaintext = PaillierPublicKeyShare.L(util.prod(decryption_shares, pk.nsquare), pk.n)
+        if relative and plaintext >= pk.n // 2:
+            plaintext -= pk.n
+        return int(plaintext)
+
+
+class PaillierSecretKeyShare:
+    def __init__(self, public_key, key_share):
+        self.public_key = public_key
+        self.key_share = key_share
+
+    def prove_knowledge(self):
+        pk = self.public_key
+        r = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+        challenge = yield commitment
+        yield r + challenge * self.key_share
+
+    def decrypt(self, ciphertext):
+        pk = self.public_key
+        return util.powmod(ciphertext.raw_value, self.key_share, pk.nsquare)
+
+    def prove_decrypt(self, ciphertext):
+        pk = self.public_key
+        plaintext = self.decrypt(ciphertext)
+
+        # prove knowledge of key_share such that:
+        #   * v_i = v**key_share
+        #   * plaintext = ciphertext**key_share
+        r = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+        right_commitment = util.powmod(ciphertext.raw_value, r, pk.nsquare)
+        challenge = yield plaintext, left_commitment, right_commitment
+        yield r + challenge * self.key_share
+
+    def prove_decrypt_batched(self, ciphertexts):
+        pk = self.public_key
+        plaintexts = [self.decrypt(ciphertext) for ciphertext in ciphertexts]
+
+        # to aggregate ZKPs, the verifier provides λ_i *after* the plaintexts
+        # have been provided; then combined_ciphertext = ∏ ciphertext^{λ_i}
+        # and combined_plaintext = ∏ m^{λ_i} (not needed for prover)
+        lambdas = yield plaintexts
+        combined_ciphertext = util.prod(
+            util.powmod(ciphertext.raw_value, lambda_, pk.nsquare)
+            for ciphertext, lambda_ in zip(ciphertexts, lambdas)
+        )
+
+        # prove knowledge of key_share such that:
+        #   * v_i = v**key_share
+        #   * combined_plaintext = combined_ciphertext**key_share
+        r = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+        right_commitment = util.powmod(combined_ciphertext, r, pk.nsquare)
+        challenge = yield left_commitment, right_commitment
+        yield r + challenge * self.key_share
 
 
 class PaillierCiphertext:

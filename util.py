@@ -53,3 +53,14 @@ def prod(elements_iterable, modulus=None):
         if modulus is not None:
             product %= modulus
     return product
+
+
+def run_protocol(alice, bob):
+    try:
+        next(bob)
+        message = next(alice)
+        while True:
+            message = bob.send(message)
+            message = alice.send(message)
+    except StopIteration as e:
+        return e.value

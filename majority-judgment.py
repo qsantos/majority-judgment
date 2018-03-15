@@ -663,120 +663,26 @@ def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
     assert winner == clear_winner
 
 
-def crt(residues, modulos):
-    redidues = list(residues)
-    product = 1
-    for modulo in modulos:
-        product *= modulo
-    r = 0
-    for residue, modulo in zip(residues, modulos):
-        NX = product // modulo
-        r += residue * NX * util.invert(NX, modulo)
-        r %= product
-    return r
+class UnsharedPaillerSecretKey:
+    def __init__(self, pk, pk_shares, sk_shares):
+        self.public_key = pk
+        self.pk_shares = pk_shares
+        self.sk_shares = sk_shares
 
-
-class SharedPaillerSecretKey:
-    def __init__(self, pk, shares):
-        self.shares = shares
-        # the probability that self.v is not invertible is
-        # (p + q - 1) / n ~= 2**1025 / 2**2048 = ε
-        self.v = random.randrange(0, pk.nsquare)**2 % pk.nsquare
-        self.verifications = [
-            util.powmod(self.v, share, pk.nsquare)
-            for share in self.shares
+    def decrypt_batched(self, ciphertext_batch):
+        decryption_share_batches = [
+            util.run_protocol(
+                sk_share.prove_decrypt_batched(ciphertext_batch),
+                pk_share.verify_decrypt_batched(ciphertext_batch),
+            )
+            for pk_share, sk_share in zip(self.pk_shares, self.sk_shares)
         ]
 
-    def decrypt_batched(self, x_batch):
-        pk = x_batch[0].public_key
-        ciphertext_batch = [
-            x.ciphertext(be_secure=False)
-            for x in x_batch
+        decryption_shares_batch = zip(*decryption_share_batches)
+        return [
+            paillier.PaillierPublicKeyShare.assemble_decryption_shares(self.pk_shares, decryption_shares)
+            for decryption_shares in decryption_shares_batch
         ]
-
-        partial_decryption_batches = [
-            [util.powmod(c, share, pk.nsquare) for c in ciphertext_batch]
-            for share in self.shares
-        ]
-        lambda_batches = [
-            [random.randrange(2**80) for c in ciphertext_batch]
-            for share in self.shares
-        ]
-
-        combined_ciphertexts = [
-            util.prod(
-                util.powmod(c, lambda_, pk.nsquare)
-                for c, lambda_ in zip(ciphertext_batch, lambda_batch)
-            ) for lambda_batch in lambda_batches
-        ]
-
-        combined_partial_decryptions = [
-            util.prod(
-                util.powmod(partial_decryption, lambda_, pk.nsquare)
-                for partial_decryption, lambda_ in zip(partial_decryption_batch, lambda_batch)
-            ) for partial_decryption_batch, lambda_batch in zip(partial_decryption_batches, lambda_batches)
-        ]
-
-        # combined zero-knowledge proofs
-        randoms = [
-            random.randrange(pk.nsquare)
-            for _ in self.shares
-        ]
-        left_commitments = [
-            util.powmod(self.v, random, pk.nsquare)
-            for random in randoms
-        ]
-        right_commitments = [
-            util.powmod(combined_c, random, pk.nsquare)
-            for combined_c, random in zip(combined_ciphertexts, randoms)
-        ]
-        challenges = [
-            random.randrange(80)  # TODO: should be hash
-            for _ in self.shares
-        ]
-        proofs = [
-            random + challenge * share
-            for random, challenge, share in zip(randoms, challenges, self.shares)
-        ]
-
-        # verify proofs
-        for verification, combined_c, combined_partial_decryptions, left_commitment, right_commitment, challenge, proof in zip(
-            self.verifications, combined_ciphertexts, combined_partial_decryptions, left_commitments, right_commitments, challenges, proofs
-        ):
-            assert util.powmod(self.v, proof, pk.nsquare) == (
-                left_commitment * util.powmod(verification, challenge, pk.nsquare)
-            ) % pk.nsquare
-            assert util.powmod(combined_c, proof, pk.nsquare) == (
-                right_commitment * util.powmod(combined_partial_decryptions, challenge, pk.nsquare)
-            ) % pk.nsquare
-
-        # regroup the decryptions per ciphertext (originally per share)
-        partial_decryptions_batch = zip(*partial_decryption_batches)
-
-        # combine partial decryptions
-        clear_batch = []
-        for partial_decryptions in partial_decryptions_batch:
-            clear = (util.prod(partial_decryptions, pk.nsquare)-1) // pk.n
-            if clear > pk.n // 2:
-                clear = clear - pk.n
-            clear_batch.append(clear)
-        return clear_batch
-
-
-def share_paillier_secret_key(sk, n_parties):
-    pk = sk.public_key
-    # Carmicael function applied on n (= lcm(p-1, q-1))
-    lambda_ = (sk.p-1)*(sk.q-1) // math.gcd(sk.p-1, sk.q-1)
-
-    # choose d such that d = 0 mod lambda_ and d = 1 mod n
-    d = crt([0, 1], [lambda_, pk.n])
-
-    shares = [
-        random.randrange(pk.n*lambda_)
-        for _ in range(n_parties-1)
-    ]
-    shares.append((d - sum(shares)) % (pk.n*lambda_))
-    return SharedPaillerSecretKey(pk, shares)
 
 
 def main():
@@ -797,18 +703,17 @@ def main():
     debug_level = args.debug
 
     # select the cryptosystem
-    if args.cryptosystem == 'mock':
+    # NOTE: we do not use safe primes for benchmarking due to slow generation
+    if args.parties > 0:
+        pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(args.parties, safe_primes=False)
+        sk = UnsharedPaillerSecretKey(pk, pk_shares, sk_shares)
+    elif args.cryptosystem == 'mock':
         pk, sk = mock.generate_mock_keypair()
     elif args.cryptosystem == 'paillier':
-        # because safe primes generation is slow, we generate common primes
-        # when we are only benchmarking
         pk, sk = paillier.generate_paillier_keypair(safe_primes=False)
     else:
         raise NotImplementedError
-
     print('Keys generated')
-    if args.parties > 0:
-        sk = share_paillier_secret_key(sk, args.parties)
 
     max_simulations = args.simulations if args.simulations else float('inf')
     seed = args.seed
