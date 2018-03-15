@@ -193,9 +193,10 @@ class PaillierSecretKeyShare:
 
     def prove_knowledge(self):
         pk = self.public_key
-        r = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        r = random.SystemRandom().randrange(pk.nsquare << 160)
         commitment = util.powmod(pk.verification_base, r, pk.nsquare)
         challenge = yield commitment
+        assert challenge < 2**80
         yield r + challenge * self.key_share
 
     def decrypt(self, ciphertext):
@@ -209,10 +210,11 @@ class PaillierSecretKeyShare:
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
         #   * plaintext = ciphertext**key_share
-        r = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        r = random.SystemRandom().randrange(pk.nsquare << 160)
         left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
         right_commitment = util.powmod(ciphertext.raw_value, r, pk.nsquare)
         challenge = yield plaintext, left_commitment, right_commitment
+        assert challenge < 2**80
         yield r + challenge * self.key_share
 
     def prove_decrypt_batched(self, ciphertexts):
@@ -231,10 +233,11 @@ class PaillierSecretKeyShare:
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
         #   * combined_plaintext = combined_ciphertext**key_share
-        r = random.SystemRandom().randrange(pk.nsquare)  # TODO: range
+        r = random.SystemRandom().randrange(pk.nsquare << 160)
         left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
         right_commitment = util.powmod(combined_ciphertext, r, pk.nsquare)
         challenge = yield left_commitment, right_commitment
+        assert challenge < 2**80
         yield r + challenge * self.key_share
 
 
