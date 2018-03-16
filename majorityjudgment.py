@@ -530,7 +530,7 @@ class PaillierMajorityJudgement:
 
         n = self.n_candidates - 1  # length of each row
         lose_batch = [
-            sum(lose_conditions_batch[i*n:(i+1)*n])
+            sum(lose_conditions_batch[i*n:(i+1)*n], self.ZERO)
             for i in range(self.n_candidates)
         ]
         self.debug(3, 'lose_batch', lose_batch)
@@ -590,7 +590,7 @@ def clear_majority_judgment(A):
         print('T =', T_victory, T_elimination)
 
     # resolve tie
-    while candidates:
+    while T_victory.count(-1) < n_candidates - 1:  # several candidates left
         if max(T_elimination) >= max(T_victory):
             # eliminate candidate
             eliminated = max(candidates, key=T_elimination.__getitem__)
@@ -599,15 +599,10 @@ def clear_majority_judgment(A):
             del candidates[candidates.index(eliminated)]
             T_elimination[eliminated] = -1
             T_victory[eliminated] = -1
-
-            if T_victory.count(-1) == n_candidates - 1:  # one candidate left
-                # victory by default
-                winner = max(candidates, key=T_victory.__getitem__)
-                return winner
-        else:
-            winner = max(candidates, key=T_victory.__getitem__)
-            return winner
-    assert False  # there should always be a winner
+        else:  # immediate victory
+            return max(candidates, key=T_victory.__getitem__)
+    # victory by default
+    return max(candidates, key=T_victory.__getitem__)
 
 
 def run_test(seed, pk, sk, n_choices, n_candidates, n_bits):
