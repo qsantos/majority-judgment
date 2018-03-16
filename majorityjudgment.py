@@ -58,8 +58,8 @@ class MPCMajorityJudgment(mpcgates.MPCGates):
 
         self.pk = pk
 
-        self.ZERO = self.pk.encrypt(0)
-        self.ONE = self.pk.encrypt(1)
+        self.ZERO = pk.encrypt(0, randomize=False)
+        self.ONE = pk.encrypt(1, randomize=False)
 
     def debug_decrypt(self, x):
         """Debug helper: recursively decrypt values"""
@@ -90,8 +90,9 @@ class MPCMajorityJudgment(mpcgates.MPCGates):
             random.choice([self.ZERO, self.ONE])
             for _ in range(self.n_candidates*(self.n_choices+2)*self.n_bits)
         ]
+        _max = 2**self.pk.security_parameter
         self.random_ints = [
-            self.pk.encrypt(random.randrange(2**self.pk.security_parameter))
+            self.pk.encrypt(random.randrange(_max), randomize=False)
             for _ in range(self.n_candidates*(self.n_choices+2))
         ]
 
