@@ -25,7 +25,16 @@ def generate_mock_keypair(*args, **kwargs):
 
 
 class MockPaillierPublicKey:
-    """Mock public key for the Paillier cryptosystem"""
+    """Mock public key for the Paillier cryptosystem
+
+    Attributes:
+        security_parameter (int): required level of security in bits, used for
+            various protocols
+    """
+    def __init__(self):
+        """Constructor"""
+        self.security_parameter = 80
+
     def encrypt(self, m):
         """Encrypt a message m into a ciphertext
 

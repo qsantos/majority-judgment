@@ -129,6 +129,8 @@ class PaillierPublicKey:
             invertible element of Z_n² whose order is a positive multiple of
             λ(n) where λ is the Carmichael function; in
             `generate_paillier_keypair()`, `g` is set to `1 + n`
+        security_parameter (int): required level of security in bits, used for
+            various protocols
         nsquare (int): cached value of `n × n`, used in operations on the
             ciphertext (probably insignificant gains and could be removed)
     """
@@ -139,10 +141,12 @@ class PaillierPublicKey:
         Arguments:
             n (int): parameter from the Paillier cryptosystem
             g (int): parameter from the Paillier cryptosystem
+            security_parameter (int): required level of security
         """
         self.n = n
         self.nsquare = n * n
         self.g = g
+        self.security_parameter = 80
 
         # cache
         self.inverts = {}
@@ -287,7 +291,7 @@ class PaillierPublicKeyShare:
 
         # run Schnorr protocol
         commitment = yield
-        challenge = random.SystemRandom().randrange(2**80)
+        challenge = random.SystemRandom().randrange(2**pk.security_parameter)
         proof = yield challenge
 
         # verify proof
@@ -314,7 +318,7 @@ class PaillierPublicKeyShare:
 
         # run Chaum-Pedersen protocol
         partial_decryption, left_commitment, right_commitment = yield
-        challenge = random.SystemRandom().randrange(2**80)
+        challenge = random.SystemRandom().randrange(2**pk.security_parameter)
         proof = yield challenge  # proof is usually noted s
 
         # verify proof
@@ -350,13 +354,13 @@ class PaillierPublicKeyShare:
         # generate random λ_i *after* decryption shares have been provided
         partial_decryption_batch = yield
         lambda_batch = [
-            random.SystemRandom().randrange(2**80)
+            random.SystemRandom().randrange(2**pk.security_parameter)
             for _ in ciphertext_batch
         ]
 
         # run Chaum-Pedersen protocol
         left_commitment, right_commitment = yield lambda_batch
-        challenge = random.SystemRandom().randrange(2**80)
+        challenge = random.SystemRandom().randrange(2**pk.security_parameter)
         proof = yield challenge  # proof is usually noted s
 
         # compute combined plaintext and ciphertext for verification
@@ -470,7 +474,7 @@ class PaillierSecretKeyShare:
             commitment = util.powmod(pk.verification_base, r, pk.nsquare)
 
         challenge = yield commitment
-        assert challenge < 2**80
+        assert challenge < 2**pk.security_parameter
         yield r + challenge * self.key_share
 
     def decrypt(self, ciphertext):
@@ -510,7 +514,7 @@ class PaillierSecretKeyShare:
         #   * partial_decryption = ciphertext**key_share
         right_commitment = util.powmod(ciphertext.raw_value, r, pk.nsquare)
         challenge = yield partial_decryption, left_commitment, right_commitment
-        assert challenge < 2**80
+        assert challenge < 2**pk.security_parameter
         yield r + challenge * self.key_share
 
     def prove_decrypt_batched(self, ciphertext_batch):
@@ -550,7 +554,7 @@ class PaillierSecretKeyShare:
         #   * combined_plaintext = combined_ciphertext**key_share
         right_commitment = util.powmod(combined_ciphertext, r, pk.nsquare)
         challenge = yield left_commitment, right_commitment
-        assert challenge < 2**80
+        assert challenge < 2**pk.security_parameter
         yield r + challenge * self.key_share
 
 

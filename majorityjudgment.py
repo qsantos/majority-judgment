@@ -50,7 +50,6 @@ class PaillierMajorityJudgement:
         self.n_candidates = n_candidates
         self.n_bits = n_bits
         self.n_parties = 8
-        self.security_parameter = 80
 
         self.pk = pk
         self.sk = sk
@@ -324,7 +323,7 @@ class PaillierMajorityJudgement:
             for _ in range(self.n_candidates*(self.n_choices+2)*self.n_bits)
         ]
         self.random_ints = [
-            self.pk.encrypt(random.randrange(2**self.security_parameter))
+            self.pk.encrypt(random.randrange(2**self.pk.security_parameter))
             for _ in range(self.n_candidates*(self.n_choices+2))
         ]
 
