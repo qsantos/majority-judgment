@@ -35,6 +35,15 @@ class MockPaillierCiphertext:
     def __radd__(self, other):
         return self + other
 
+    def __neg__(self):
+        return self * -1
+
+    def __sub__(self, other):
+        return self + -other
+
+    def __rsub__(self, other):
+        return -self + other
+
     def __mul__(self, other):
         pk = self.public_key
         if isinstance(other, MockPaillierCiphertext):
@@ -44,15 +53,6 @@ class MockPaillierCiphertext:
 
     def __rmul__(self, other):
         return self * other
-
-    def __neg__(self):
-        return self * -1
-
-    def __sub__(self, other):
-        return self + -other
-
-    def __rsub__(self, other):
-        return -self + other
 
     def __truediv__(self, other):
         pk = self.public_key
