@@ -32,15 +32,15 @@ def genprime(n_bits, safe_prime=False):
     return gmpy2.next_prime(n)
 
 
-def crt(residues, modulos):
+def crt(residues, moduli):
     redidues = list(residues)
     product = 1
-    for modulo in modulos:
-        product *= modulo
+    for modulus in moduli:
+        product *= modulus
     r = 0
-    for residue, modulo in zip(residues, modulos):
-        NX = product // modulo
-        r += residue * NX * invert(NX, modulo)
+    for residue, modulus in zip(residues, moduli):
+        NX = product // modulus
+        r += residue * NX * invert(NX, modulus)
         r %= product
     return r
 
