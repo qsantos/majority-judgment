@@ -2,37 +2,45 @@
 
 
 def generate_mock_keypair(*args, **kwargs):
-    return MockPaillierPublicKey(), MockPaillierPrivateKey()
-
-
-class MockPaillierPrivateKey:
-    def decrypt(self, x):
-        return x.x
+    sk = MockPaillierPrivateKey()
+    return sk.public_key, sk
 
 
 class MockPaillierPublicKey:
     def encrypt(self, x):
-        return MockPaillierEncryptedNumber(x)
+        return MockPaillierEncryptedNumber(self, x)
+
+
+class MockPaillierPrivateKey:
+    def __init__(self):
+        self.public_key = MockPaillierPublicKey()
+
+    def decrypt(self, x):
+        assert x.public_key == self.public_key
+        return x.x
 
 
 class MockPaillierEncryptedNumber:
-    def __init__(self, x):
+    def __init__(self, public_key, x):
+        self.public_key = public_key
         self.x = x
 
     def __add__(self, other):
+        pk = self.public_key
         if isinstance(other, MockPaillierEncryptedNumber):
-            return MockPaillierEncryptedNumber(self.x + other.x)
+            return MockPaillierEncryptedNumber(pk, self.x + other.x)
         else:
-            return MockPaillierEncryptedNumber(self.x + other)
+            return MockPaillierEncryptedNumber(pk, self.x + other)
 
     def __radd__(self, other):
         return self + other
 
     def __mul__(self, other):
+        pk = self.public_key
         if isinstance(other, MockPaillierEncryptedNumber):
             raise NotImplementedError('Good luck with that...')
         else:
-            return MockPaillierEncryptedNumber(self.x * other)
+            return MockPaillierEncryptedNumber(pk, self.x * other)
 
     def __rmul__(self, other):
         return self * other
@@ -47,8 +55,9 @@ class MockPaillierEncryptedNumber:
         return -self + other
 
     def __truediv__(self, other):
+        pk = self.public_key
         if isinstance(other, MockPaillierEncryptedNumber):
             raise NotImplementedError('Good luck with that...')
         else:
             assert self.x % other == 0
-            return MockPaillierEncryptedNumber(self.x // other)
+            return MockPaillierEncryptedNumber(pk, self.x // other)
