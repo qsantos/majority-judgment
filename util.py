@@ -34,9 +34,7 @@ def genprime(n_bits, safe_prime=False):
 
 def crt(residues, moduli):
     redidues = list(residues)
-    product = 1
-    for modulus in moduli:
-        product *= modulus
+    product = prod(moduli)
     r = 0
     for residue, modulus in zip(residues, moduli):
         NX = product // modulus
