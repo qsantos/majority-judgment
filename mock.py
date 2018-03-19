@@ -7,40 +7,40 @@ def generate_mock_keypair(*args, **kwargs):
 
 
 class MockPaillierPublicKey:
-    def encrypt(self, x):
-        return MockPaillierEncryptedNumber(self, x)
+    def encrypt(self, m):
+        return MockPaillierCiphertext(self, m)
 
 
 class MockPaillierPrivateKey:
     def __init__(self):
         self.public_key = MockPaillierPublicKey()
 
-    def decrypt(self, x):
-        assert x.public_key == self.public_key
-        return x.x
+    def decrypt(self, ciphertext):
+        assert ciphertext.public_key == self.public_key
+        return ciphertext.raw_value
 
 
-class MockPaillierEncryptedNumber:
-    def __init__(self, public_key, x):
+class MockPaillierCiphertext:
+    def __init__(self, public_key, raw_value):
         self.public_key = public_key
-        self.x = x
+        self.raw_value = raw_value
 
     def __add__(self, other):
         pk = self.public_key
-        if isinstance(other, MockPaillierEncryptedNumber):
-            return MockPaillierEncryptedNumber(pk, self.x + other.x)
+        if isinstance(other, MockPaillierCiphertext):
+            return MockPaillierCiphertext(pk, self.raw_value + other.raw_value)
         else:
-            return MockPaillierEncryptedNumber(pk, self.x + other)
+            return MockPaillierCiphertext(pk, self.raw_value + other)
 
     def __radd__(self, other):
         return self + other
 
     def __mul__(self, other):
         pk = self.public_key
-        if isinstance(other, MockPaillierEncryptedNumber):
+        if isinstance(other, MockPaillierCiphertext):
             raise NotImplementedError('Good luck with that...')
         else:
-            return MockPaillierEncryptedNumber(pk, self.x * other)
+            return MockPaillierCiphertext(pk, self.raw_value * other)
 
     def __rmul__(self, other):
         return self * other
@@ -56,8 +56,8 @@ class MockPaillierEncryptedNumber:
 
     def __truediv__(self, other):
         pk = self.public_key
-        if isinstance(other, MockPaillierEncryptedNumber):
+        if isinstance(other, MockPaillierCiphertext):
             raise NotImplementedError('Good luck with that...')
         else:
-            assert self.x % other == 0
-            return MockPaillierEncryptedNumber(pk, self.x // other)
+            assert self.raw_value % other == 0
+            return MockPaillierCiphertext(pk, self.raw_value // other)
