@@ -68,6 +68,10 @@ class PaillierPublicKey:
             raw_value = raw_value * util.powmod(r, self.n, n2) % n2
         return PaillierCiphertext(self, raw_value)
 
+    @staticmethod
+    def L(u, n):
+        return (u - 1) // n
+
 
 class PaillierSecretKey:
     def __init__(self, p, q, g):
@@ -76,18 +80,15 @@ class PaillierSecretKey:
         self.public_key = pk = PaillierPublicKey(p*q, g)
 
         # pre-computations
-        self.hp = util.invert(self.L(util.powmod(pk.g, p-1, p*p), p), p)
-        self.hq = util.invert(self.L(util.powmod(pk.g, q-1, q*q), q), q)
-
-    def L(self, u, n):
-        return (u - 1) // n
+        self.hp = util.invert(pk.L(util.powmod(pk.g, p-1, p*p), p), p)
+        self.hq = util.invert(pk.L(util.powmod(pk.g, q-1, q*q), q), q)
 
     def decrypt(self, ciphertext, relative=True):
         pk = self.public_key
         p, q = self.p, self.q
         ciphertext = ciphertext.raw_value
-        m_mod_p = self.L(util.powmod(ciphertext, p-1, p*p), p) * self.hp % p
-        m_mod_q = self.L(util.powmod(ciphertext, q-1, q*q), q) * self.hq % q
+        m_mod_p = pk.L(util.powmod(ciphertext, p-1, p*p), p) * self.hp % p
+        m_mod_q = pk.L(util.powmod(ciphertext, q-1, q*q), q) * self.hq % q
         plaintext = util.crt([m_mod_p, m_mod_q], [p, q])
         if relative and plaintext >= pk.n//2:
             plaintext -= pk.n
@@ -174,13 +175,9 @@ class PaillierPublicKeyShare:
         return partial_decryption_batch
 
     @staticmethod
-    def L(u, n):
-        return (u - 1) // n
-
-    @staticmethod
     def assemble_decryption_shares(shares, decryption_shares, relative=True):
         pk = shares[0].public_key
-        plaintext = PaillierPublicKeyShare.L(util.prod(decryption_shares, pk.nsquare), pk.n)
+        plaintext = pk.L(util.prod(decryption_shares, pk.nsquare), pk.n)
         if relative and plaintext >= pk.n // 2:
             plaintext -= pk.n
         return int(plaintext)
