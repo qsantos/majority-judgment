@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Majority judgment using Paillier encryption
+"""Majority judgment using Paillier encryption
 
 LSBs and the conditional gates are partially implemented: the interaction
 between the parties is simulated by generating all values locally
