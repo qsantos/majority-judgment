@@ -4,6 +4,7 @@ import unittest
 import util
 import mock
 import paillier
+import mpcprotocols
 import majorityjudgment
 
 _N_BITS = 103
@@ -282,7 +283,8 @@ class TestPaillierMajorityJudgment(unittest.TestCase, MajorityJudgmentFixture):
         n_candidates = len(A)
         n_choices = len(A[0])
         n_bits = max(x for row in A for x in row).bit_length() + 1
-        election = majorityjudgment.PaillierMajorityJudgement(pk, sk, n_choices, n_candidates, n_bits)
+        protocols = mpcprotocols.MockMPCProtocols(sk)
+        election = majorityjudgment.MPCMajorityJudgment(pk, protocols, n_choices, n_candidates, n_bits)
         election.precompute()
 
         # encrypt the ballots
