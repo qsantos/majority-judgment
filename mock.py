@@ -31,11 +31,11 @@ class MockPaillierPublicKey:
         security_parameter (int): required level of security in bits, used for
             various protocols
     """
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         """Constructor"""
         self.security_parameter = 80
 
-    def encrypt(self, m):
+    def encrypt(self, m, *args, **kwargs):
         """Encrypt a message m into a ciphertext
 
         Arguments:
@@ -55,11 +55,11 @@ class MockPaillierPrivateKey:
     Attributes:
         public_key (MockPaillierPublicKey): the corresponding public key
     """
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         """Constructor"""
         self.public_key = MockPaillierPublicKey()
 
-    def decrypt(self, ciphertext):
+    def decrypt(self, ciphertext, *args, **kwargs):
         """Decrypt a ciphertext
 
         Arguments:
@@ -87,7 +87,7 @@ class MockPaillierCiphertext:
             where `n` and `g` are the attributes of the public key, `m` is the
             message which was encrypted and `r` is a random element of Z_n
     """
-    def __init__(self, public_key, raw_value):
+    def __init__(self, public_key, raw_value, *args, **kwargs):
         """Constructor
 
         Arguments:
