@@ -48,12 +48,6 @@ def generate_paillier_keypair(n_bits=2048, safe_primes=True):
 def share_paillier_keypair(pk, sk, n_shares):
     """Share an existing keypair for the Paillier cryptosystem
 
-    It adds an attribute `verification_base` to `pk` (the value returned of
-    type `PaillierPublicKey`). It is an element from Q_n, the subgroup of the
-    squares of Z_n²^* (i.e. the quadratic residues of Z_n²). This value is used
-    as a base for each verification in a public key share (attribute
-    `verification` of `PaillierPublicKeyShare`).
-
     Arguments:
         pk (PaillierPublicKey): public part of the keypair to be shared
         sk (PaillierSecretKey): secret part of the keypair to be shared
@@ -77,7 +71,7 @@ def share_paillier_keypair(pk, sk, n_shares):
     exponent = util.crt([0, 1], [lambda_, pk.n])
 
     # the base must be a quadratic residue
-    pk.verification_base = random.randrange(pk.nsquare)**2 % pk.nsquare
+    verification_base = random.randrange(pk.nsquare)**2 % pk.nsquare
 
     # split the secret exponent into required number of shares
     key_shares = [
@@ -88,17 +82,17 @@ def share_paillier_keypair(pk, sk, n_shares):
 
     # compute corresponding verification elements
     verifications = [
-        util.powmod(pk.verification_base, key_share, pk.nsquare)
+        util.powmod(verification_base, key_share, pk.nsquare)
         for key_share in key_shares
     ]
 
     # create public and private key shares
     pk_shares = [
-        PaillierPublicKeyShare(pk, verification)
+        PaillierPublicKeyShare(pk, verification_base, verification)
         for verification in verifications
     ]
     sk_shares = [
-        PaillierSecretKeyShare(pk, key_share)
+        PaillierSecretKeyShare(pk, verification_base, key_share)
         for key_share in key_shares
     ]
 
@@ -280,21 +274,24 @@ class PaillierPublicKeyShare:
 
     Attributes:
         public_key (PaillierPublicKey): the non-shared public key
-        verification (int): v^{s_i} where v is the attribute
-            `verification_base` set in `generate_paillier_keypair_shares()` on
-            `PaillierPublicKey` and `s_i` is the attribute `key_share` from the
-            corresponding `PaillierSecretKeyShare`; this value is used in
-            verification to check that the correct exponent was used in
+
+        verification_base (int): element from Q_n (quadratic residues of Z_n²);
+            used as a base for cryptographic proofs
+        verification (int): `verification_base^key_share` with `key_share` from
+            the corresponding `PaillierSecretKeyShare`; this value is used in
+            cryptographic proofs to check that the correct exponent was used in
             computations
     """
-    def __init__(self, public_key, verification):
+    def __init__(self, public_key, verification_base, verification):
         """Constructor
 
         Arguments:
             public_key (PaillierPublicKey): the non-shared Paillier public key
+            verification_base (int): parameter v in shared Paillier
             verification (int): parameter v_i in shared Paillier
         """
         self.public_key = public_key
+        self.verification_base = verification_base
         self.verification = verification  # v_i = v^{s_i}
 
     def verify_knowledge(self):
@@ -311,7 +308,7 @@ class PaillierPublicKeyShare:
         proof = yield challenge
 
         # verify proof
-        if util.powmod(pk.verification_base, proof, pk.nsquare) != \
+        if util.powmod(self.verification_base, proof, pk.nsquare) != \
                 commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
             raise InvalidProof
 
@@ -339,7 +336,7 @@ class PaillierPublicKeyShare:
 
         # verify proof
         # check that v^s = t_1 * v_i^c
-        if util.powmod(pk.verification_base, proof, pk.nsquare) != \
+        if util.powmod(self.verification_base, proof, pk.nsquare) != \
                 left_commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
             raise InvalidProof
         # check that x^s = t_2 * m^c
@@ -391,7 +388,7 @@ class PaillierPublicKeyShare:
 
         # verify proof
         # check that v^s = t_1 * v_i^c
-        if util.powmod(pk.verification_base, proof, pk.nsquare) != \
+        if util.powmod(self.verification_base, proof, pk.nsquare) != \
                 left_commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
             raise InvalidProof
         # check that x^s = t_2 * m^c
@@ -439,9 +436,11 @@ class PaillierSecretKeyShare:
 
     Attributes:
         public_key (PaillierPublicKey): the non-shared public key
+        verification_base (int): element from Q_n (quadratic residues of Z_n²);
+            used as a base for cryptographic proofs
         key_share (int): the share of the secret exponent used for decryption
     """
-    def __init__(self, public_key, key_share):
+    def __init__(self, public_key, verification_base, key_share):
         """Constructor
 
         Arguments:
@@ -449,6 +448,7 @@ class PaillierSecretKeyShare:
             key_share (int): parameter s_i in shared Paillier
         """
         self.public_key = public_key
+        self.verification_base = verification_base
         self.key_share = key_share
 
     def precompute(self, n_uses):
@@ -470,7 +470,7 @@ class PaillierSecretKeyShare:
             for _ in range(n_uses)
         ]
         self.precomputed_values = [
-            (r, util.powmod(pk.verification_base, r, pk.nsquare))
+            (r, util.powmod(self.verification_base, r, pk.nsquare))
             for r in randoms
         ]
 
@@ -487,7 +487,7 @@ class PaillierSecretKeyShare:
             r, commitment = self.precomputed_values.pop()
         else:
             r = random.SystemRandom().randrange(pk.nsquare << 160)
-            commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+            commitment = util.powmod(self.verification_base, r, pk.nsquare)
 
         challenge = yield commitment
         assert challenge < 2**pk.security_parameter
@@ -523,7 +523,7 @@ class PaillierSecretKeyShare:
             r, left_commitment = self.precomputed_values.pop()
         else:
             r = random.SystemRandom().randrange(pk.nsquare << 160)
-            left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+            left_commitment = util.powmod(self.verification_base, r, pk.nsquare)
 
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
@@ -563,7 +563,7 @@ class PaillierSecretKeyShare:
             r, left_commitment = self.precomputed_values.pop()
         else:
             r = random.SystemRandom().randrange(pk.nsquare << 160)
-            left_commitment = util.powmod(pk.verification_base, r, pk.nsquare)
+            left_commitment = util.powmod(self.verification_base, r, pk.nsquare)
 
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
