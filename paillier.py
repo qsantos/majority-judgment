@@ -45,8 +45,8 @@ def generate_paillier_keypair(n_bits=2048, safe_primes=True):
     return sk.public_key, sk
 
 
-def generate_paillier_keypair_shares(n_shares, n_bits=2048, safe_primes=True):
-    """Generate shares of keys for the Paillier cryptosystem
+def share_paillier_keypair(pk, sk, n_shares):
+    """Share an existing keypair for the Paillier cryptosystem
 
     It adds an attribute `verification_base` to `pk` (the value returned of
     type `PaillierPublicKey`). It is an element from Q_n, the subgroup of the
@@ -55,29 +55,17 @@ def generate_paillier_keypair_shares(n_shares, n_bits=2048, safe_primes=True):
     `verification` of `PaillierPublicKeyShare`).
 
     Arguments:
-        n_shares (int): the number of shares into which the secret key should
-            be split
-        n_bits (int, optional): the number of bits for the parameter `n`; they
-            security corresponds to the difficulty of factoring `n` (as in
-            RSA); as of 2018, NIST and ANSSI recommend at least 2048 bits and
-            NSA 3072 bits
-        safe_primes (bool, optional): safe primes are required for the security
-            of the cryptosystems; however, generating safe primes takes much
-            more time (generating a 2048 bit keypair takes one minute with safe
-            primes, but a fraction of a second without); disabling the use of
-            safe primes can be useful when security is not important (e.g.
-            benchmarking)
-            DO NOT SET TO FALSE IN PRODUCTION
+        pk (PaillierPublicKey): public part of the keypair to be shared
+        sk (PaillierSecretKey): secret part of the keypair to be shared
+        n_shares (int): the number of shares into which to split the keypair
 
     Returns:
-        tuple: triplet of three elements, usually named respectively `pk`
-            (`PaillierPublicKey`), `pk_shares` (`list` of
-            `PaillierPublicKeyShare`) and `sk_shares` (`list` of
+        tuple: pair of two elements, usually named respectively `pk_shares`
+            (`list` of `PaillierPublicKeyShare`) and `sk_shares` (`list` of
             `PaillierSecretKeyShare`).
 
-        The public key (`pk`) allows to encrypt messages (relative integers).
         When used together, the secret key shares (`sk_shares`) allow to
-        decrypt ciphertexts generated using that public key (but not using
+        decrypt ciphertexts generated using the given public key (but not using
         another), using the method `assemble_decryption_shares()` from
         `PaillierPublicKeyShare`. The public key shares (`pk_shares`) can be
         used to verify that each secret key share was used correctly (usually
@@ -85,7 +73,6 @@ def generate_paillier_keypair_shares(n_shares, n_bits=2048, safe_primes=True):
         each party correctly processes the ciphertext using their secret key
         share).
     """
-    pk, sk = generate_paillier_keypair(n_bits, safe_primes)
     lambda_ = (sk.p-1)*(sk.q-1) // 2  # λ(n) = lcm(p-1, q-1); p, q safe primes
     exponent = util.crt([0, 1], [lambda_, pk.n])
 
@@ -115,6 +102,35 @@ def generate_paillier_keypair_shares(n_shares, n_bits=2048, safe_primes=True):
         for key_share in key_shares
     ]
 
+    return pk_shares, sk_shares
+
+
+def generate_paillier_keypair_shares(n_shares, n_bits=2048, safe_primes=True):
+    """Generate shares of keys for the Paillier cryptosystem
+
+    This just calls `generate_paillier_keypair()` and then
+    `share_paillier_keypair()` on the result. See their respective
+    documentation for more information.
+
+    Arguments:
+        n_shares (int): the number of shares into which to split the keypair
+        n_bits (int, optional): the number of bits for the parameter n; they
+            security corresponds to the difficulty of factoring `n` (as in
+            RSA); as of 2018, NIST and ANSSI recommend at least 2048 bits and
+            NSA 3072 bits
+        safe_primes (bool, optional): safe primes are required for the security
+            of the cryptosystems; however, generating safe primes takes much
+            more time (generating a 2048 bit keypair takes one minute with safe
+            primes, but a fraction of a second without); disabling the use of
+            safe primes can be useful when security is not important (e.g.
+            benchmarking)
+            DO NOT SET TO FALSE IN PRODUCTION
+
+    Returns:
+        tuple: triplet of three elements, `pk`, `pk_shares` and `sk_shares`
+    """
+    pk, sk = generate_paillier_keypair(n_bits, safe_primes)
+    pk_shares, sk_shares = share_paillier_keypair(pk, sk, n_shares)
     return pk, pk_shares, sk_shares
 
 
