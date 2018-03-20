@@ -253,8 +253,8 @@ class PaillierMajorityJudgement:
                 ret_batch[k].append(r)
         return ret_batch
 
-    def lsbs_gate_batched(self, x_batch):
-        """LSBs gate, as per ST06
+    def bit_extraction_gate_batched(self, x_batch):
+        """Bit extraction gate, as per ST06 (LSBs gate)
 
         Efficient Binary Conversion for Paillier Encrypted Values
         Section 4 (pages 10 through 12)
@@ -345,7 +345,7 @@ class PaillierMajorityJudgement:
 
     def compute_bitrep_of_sums(self):
         """Switch the sums to binary representation"""
-        flattened = self.lsbs_gate_batched(
+        flattened = self.bit_extraction_gate_batched(
             self.total_sum_of_candidate +
             [x for row in self.sums_of_candidate for x in row]
         )
@@ -405,7 +405,7 @@ class PaillierMajorityJudgement:
 
     def compute_bitrep_of_T(self):
         """Switch T to binary representation"""
-        self.T = self.lsbs_gate_batched(self.T)
+        self.T = self.bit_extraction_gate_batched(self.T)
 
     def compute_comparisons(self):
         """Run challenges between the candidates (each-other and themselves)"""
