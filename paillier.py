@@ -265,7 +265,7 @@ class PaillierSecretKey:
         plaintext = util.crt([m_mod_p, m_mod_q], [p, q])
         if relative and plaintext >= pk.n//2:
             plaintext -= pk.n
-        return int(plaintext)
+        return plaintext
 
 
 class InvalidProof(Exception):
@@ -431,7 +431,7 @@ class PaillierPublicKeyShare:
         plaintext = pk.L(util.prod(decryption_shares, pk.nsquare), pk.n)
         if relative and plaintext >= pk.n // 2:
             plaintext -= pk.n
-        return int(plaintext)
+        return plaintext
 
 
 class PaillierSecretKeyShare:

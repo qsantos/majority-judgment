@@ -23,7 +23,7 @@ def powmod(x, y, m):
     if x == 1:
         return 1
     else:
-        return gmpy2.powmod(x, y, m)
+        return int(gmpy2.powmod(x, y, m))
 
 
 def invert(x, m):
@@ -38,7 +38,7 @@ def invert(x, m):
     Returns:
         int: y such that `x × y = 1 mod m`
     """
-    return gmpy2.invert(x, m)
+    return int(gmpy2.invert(x, m))
 
 
 def is_prime(x):
@@ -52,7 +52,7 @@ def is_prime(x):
     Returns:
         bool: `True` if `x` is probably prime else `False`
     """
-    return gmpy2.is_prime(x)
+    return int(gmpy2.is_prime(x))
 
 
 def genprime(n_bits, safe_prime=False):
@@ -80,7 +80,7 @@ def genprime(n_bits, safe_prime=False):
                 return q
     # just a random prime
     n = random.SystemRandom().randrange(2**(n_bits-1), 2**n_bits) | 1
-    return gmpy2.next_prime(n)
+    return int(gmpy2.next_prime(n))
 
 
 def crt(residues, moduli):
