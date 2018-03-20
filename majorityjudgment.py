@@ -13,6 +13,7 @@ Depends on `gmpy2`
 """
 import math
 import time
+import json
 import random
 import argparse
 
@@ -671,6 +672,42 @@ class UnsharedPaillerSecretKey:
         ]
 
 
+def load_keypair(args):
+    if args.parties < 0:
+        return mock.generate_mock_keypair()
+
+    # load cached keys or generate new ones
+    try:
+        with open('key.cache') as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.decoder.JSONDecodeError):
+        # generate the keys
+        pk, sk = paillier.generate_paillier_keypair()
+        # cache them
+        with open('key.cache', 'w') as f:
+            json.dump({'p': sk.p, 'q': sk.q, 'g': pk.g}, f)
+        print('Key generated')
+    else:
+        sk = paillier.PaillierSecretKey(data['p'], data['q'], data['g'])
+        pk = sk.public_key
+        print('Keys loaded')
+
+    if args.parties == 0:
+        # no key sharing
+        return pk, sk
+
+    # prepare key sharing
+    pk_shares, sk_shares = paillier.share_paillier_keypair(pk, sk, args.parties)
+    sk = UnsharedPaillerSecretKey(pk, pk_shares, sk_shares)
+
+    # pre-compute left commitments
+    n_batched_decryptions = 4*args.bits + args.candidates.bit_length() + 6
+    for sk_share in sk_shares:
+        sk_share.precompute(n_batched_decryptions)
+
+    return pk, sk
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.description = 'Majority judgment protocol with Paillier encryption'
@@ -686,22 +723,7 @@ def main():
     global debug_level
     debug_level = args.debug
 
-    # generate the keys
-    # NOTE: we do not use safe primes for benchmarking due to slow generation
-    if args.parties < 0:
-        pk, sk = mock.generate_mock_keypair()
-    elif args.parties == 0:
-        pk, sk = paillier.generate_paillier_keypair(safe_primes=False)
-    else:
-        pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(args.parties, safe_primes=False)
-
-        # pre-compute left commitments
-        n_batched_decryptions = 4*args.bits + args.candidates.bit_length() + 6
-        for sk_share in sk_shares:
-            sk_share.precompute(n_batched_decryptions)
-
-        sk = UnsharedPaillerSecretKey(pk, pk_shares, sk_shares)
-    print('Keys generated')
+    pk, sk = load_keypair(args)
 
     max_simulations = args.simulations if args.simulations else float('inf')
     seed = args.seed
