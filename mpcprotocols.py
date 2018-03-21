@@ -26,8 +26,8 @@ class MockMPCProtocols:
             sk (paillier.PaillierSecretKey): the secret key held by the party
         """
         self.sk = sk
-        self.n_decrypt_gate = 0
-        self.d_decrypt_gate = 0
+        self.n_decrypt = 0
+        self.d_decrypt = 0
 
     def decrypt_batched(self, ciphertext_batch):
         """Decrypt protocol
@@ -39,8 +39,8 @@ class MockMPCProtocols:
         returns:
             list: the plaintexts (int) corresponding to the given ciphertexts
         """
-        self.n_decrypt_gate += len(ciphertext_batch)
-        self.d_decrypt_gate += 1
+        self.n_decrypt += len(ciphertext_batch)
+        self.d_decrypt += 1
         return [self.sk.decrypt(x) for x in ciphertext_batch]
 
     def random_negate_batched(self, x_batch, y_batch):
@@ -74,8 +74,8 @@ class SharedMockMPCProtocols(MockMPCProtocols):
         self.pk_shares = pk_shares
         self.sk_shares = sk_shares
 
-        self.n_decrypt_gate = 0
-        self.d_decrypt_gate = 0
+        self.n_decrypt = 0
+        self.d_decrypt = 0
 
     def decrypt_batched(self, ciphertext_batch):
         """Decrypt protocol
@@ -87,6 +87,9 @@ class SharedMockMPCProtocols(MockMPCProtocols):
         returns:
             list: the plaintexts (int) corresponding to the given ciphertexts
         """
+        self.n_decrypt += len(ciphertext_batch)
+        self.d_decrypt += 1
+
         decryption_share_batches = [
             util.run_protocol(
                 sk_share.prove_decrypt_batched(ciphertext_batch),

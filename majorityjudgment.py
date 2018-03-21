@@ -411,7 +411,7 @@ def run_test(seed, pk, protocols, n_choices, n_candidates, n_bits):
     # show number of calls to oracle
     if debug_level >= 1:
         print('{} decrypt gates (depth: {})'.format(
-            protocols.n_decrypt_gate, protocols.d_decrypt_gate)
+            protocols.n_decrypt, protocols.d_decrypt)
         )
 
     assert winner == clear_winner
