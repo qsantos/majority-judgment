@@ -13,6 +13,16 @@ import random
 
 import util
 
+# the DDH is not hard in Z_n², only in Q_n², the subgroup of the quadratic
+# residues modulo n²; so, to ensure that publishing c^s does not leak
+# information about s, the prover first squares c; this protects the prover
+_QR = 2
+
+# Chaum-Pedersen proofs are only secure on cyclic groups, like Q_n² (see
+# above); thus, the verifier squares both hands of the equation when they
+# cannot ensure to be working in Q_n; this protects the verifier
+_CP = 2
+
 
 def generate_paillier_keypair(n_bits=2048, safe_primes=True):
     """Generate a pair of keys for the Paillier cryptosystem
@@ -339,9 +349,9 @@ class PaillierPublicKeyShare:
         if util.powmod(self.verification_base, proof, pk.nsquare) != \
                 left_commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
             raise InvalidProof
-        # check that x^s = t_2 * m^c
-        if util.powmod(ciphertext.raw_value, proof, pk.nsquare) != \
-                right_commitment * util.powmod(partial_decryption, challenge, pk.nsquare) % pk.nsquare:
+        # check that (x^2)^s = t_2 * (m^2)^c
+        if util.powmod(ciphertext.raw_value, _CP*_QR*proof, pk.nsquare) != \
+                right_commitment * util.powmod(partial_decryption, _CP*challenge, pk.nsquare) % pk.nsquare:
             raise InvalidProof
 
         return partial_decryption
@@ -391,9 +401,9 @@ class PaillierPublicKeyShare:
         if util.powmod(self.verification_base, proof, pk.nsquare) != \
                 left_commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
             raise InvalidProof
-        # check that x^s = t_2 * m^c
-        if util.powmod(combined_ciphertext, proof, pk.nsquare) != \
-                right_commitment * util.powmod(combined_plaintext, challenge, pk.nsquare) % pk.nsquare:
+        # check that (x^2)^s = t_2 * (m^2)^c
+        if util.powmod(combined_ciphertext, _CP*_QR*proof, pk.nsquare) != \
+                right_commitment * util.powmod(combined_plaintext, _CP*challenge, pk.nsquare) % pk.nsquare:
             raise InvalidProof
 
         return partial_decryption_batch
@@ -426,6 +436,7 @@ class PaillierPublicKeyShare:
         """
         pk = shares[0].public_key
         plaintext = pk.L(util.prod(decryption_shares, pk.nsquare), pk.n)
+        plaintext = plaintext * util.invert(_QR, pk.n) % pk.n  # look _QR def.
         if relative and plaintext >= pk.n // 2:
             plaintext -= pk.n
         return plaintext
@@ -504,7 +515,7 @@ class PaillierSecretKeyShare:
                 secret key share
         """
         pk = self.public_key
-        return util.powmod(ciphertext.raw_value, self.key_share, pk.nsquare)
+        return util.powmod(ciphertext.raw_value, _QR*self.key_share, pk.nsquare)
 
     def prove_decrypt(self, ciphertext):
         """(Partially) decrypt a ciphertext in a verifiable manner
@@ -527,8 +538,8 @@ class PaillierSecretKeyShare:
 
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
-        #   * partial_decryption = ciphertext**key_share
-        right_commitment = util.powmod(ciphertext.raw_value, r, pk.nsquare)
+        #   * (partial_decryption**2) = (ciphertext**2)**(2*key_share)
+        right_commitment = util.powmod(ciphertext.raw_value, _CP*_QR*r, pk.nsquare)
         challenge = yield partial_decryption, left_commitment, right_commitment
         assert challenge < 2**pk.security_parameter
         yield r + challenge * self.key_share
@@ -567,8 +578,8 @@ class PaillierSecretKeyShare:
 
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
-        #   * combined_plaintext = combined_ciphertext**key_share
-        right_commitment = util.powmod(combined_ciphertext, r, pk.nsquare)
+        #   * combined_plaintext**2 = (combined_ciphertext**2)**(2*key_share)
+        right_commitment = util.powmod(combined_ciphertext, _CP*_QR*r, pk.nsquare)
         challenge = yield left_commitment, right_commitment
         assert challenge < 2**pk.security_parameter
         yield r + challenge * self.key_share
