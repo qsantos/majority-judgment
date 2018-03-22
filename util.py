@@ -22,6 +22,8 @@ def powmod(x, y, m):
     """
     if x == 1:
         return 1
+    elif y < 0:
+        return invert(powmod(x, -y, m), m)
     else:
         return int(gmpy2.powmod(x, y, m))
 

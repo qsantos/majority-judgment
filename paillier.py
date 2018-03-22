@@ -201,7 +201,11 @@ class PaillierPublicKey:
             `b`, and the randomization used
         """
         n2 = self.nsquare
-        b %= self.n  # explicitely reduces to avoid negative/large exponents
+
+        # explicitely reduces to avoid large exponents
+        b %= self.n
+        if b > self.n // 2:
+            b -= self.n
 
         # if a is of the form (1+n)^q, then we can avoid the exponentiation
         q, r = divmod(a-1, self.n)
