@@ -221,6 +221,66 @@ class PaillierPublicKey:
 
         return raw_value, randomization
 
+    def prove_private_multiply(self, x, cy):
+        """Multiply a ciphertext with a plaintext in a verifiable manner
+
+        Arguments:
+            x (int): the clear operand
+            cy (PaillierCiphertext): the encrypted operand
+
+        Returns:
+            generator: the corresponding protocol
+        """
+        n2 = self.nsquare
+        cy = cy.raw_value
+
+        # encrypted operand and result
+        cx, rx = self.raw_multiply(self.g, x)  # ⟦x⟧
+        cz, rz = self.raw_multiply(cy, x)  # ⟦z⟧ = ⟦xy⟧
+
+        # random value and commitments
+        u = random.SystemRandom().randrange(self.n)
+        cu, ru = self.raw_multiply(self.g, u)  # ⟦u⟧
+        cyu, ryu = self.raw_multiply(cy, u)  # ⟦yu⟧
+
+        # run protocol
+        challenge = yield cx, cz, cu, cyu
+        rs = ru * util.powmod(rx, challenge, self.n) % self.n
+        rys = ryu * util.powmod(rz, challenge, self.n) % self.n
+        yield u + x*challenge, rs, rys
+
+    def verify_private_multiply(self, cy):
+        """Check the proof of multiplication of a ciphertext with a plaintext
+
+        Arguments:
+            cy (PaillierCiphertext): the encrypted operand
+
+        Returns:
+            generator: the corresponding protocol
+
+            The generator itself returns the encrypted missing operand and the
+            encrypted product of the plaintext with the ciphertext.
+        """
+        n2 = self.nsquare
+        cy = cy.raw_value
+
+        # run protocol
+        cx, cz, cu, cyu = yield
+        challenge = random.SystemRandom().randrange(2**self.security_parameter)
+        proof, rs, rys = yield challenge  # proof is usually noted s
+
+        # verify proofs
+        cs, _ = self.raw_multiply(self.g, proof, rs)  # ⟦s⟧ = ⟦u + xe⟧
+        cys, _ = self.raw_multiply(cy, proof, rys)  # ⟦ys⟧ = ⟦y(u + xe)⟧
+        # ⟦u⟧ * ⟦x⟧**e = ⟦u + xe⟧ = ⟦s⟧
+        if cs != cu * util.powmod(cx, challenge, n2) % n2:
+            raise InvalidProof
+        # ⟦yu⟧ * ⟦z⟧**e = ⟦yu + yxe⟧ = ⟦ys⟧
+        if cys != cyu * util.powmod(cz, challenge, n2) % n2:
+            raise InvalidProof
+
+        return PaillierCiphertext(self, cx), PaillierCiphertext(self, cz)
+
     @staticmethod
     def L(u, n):
         """As defined in the Paillier cryptosystem

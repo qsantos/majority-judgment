@@ -226,6 +226,17 @@ class TestPaillierShared(unittest.TestCase):
             verifier = pk_share.verify_decrypt_batched(ciphertext_batch)
             self.assertRaises(IndexError, util.run_protocol, prover, verifier)
 
+    def test_private_multiply(self):
+        pk, sk = paillier.generate_paillier_keypair(_N_BITS)
+        x, y = -2, 42
+        cy = pk.encrypt(y)
+        cx, cz = util.run_protocol(
+            pk.prove_private_multiply(x, cy),
+            pk.verify_private_multiply(cy),
+        )
+        self.assertEqual(sk.decrypt(cx), x)
+        self.assertEqual(sk.decrypt(cz), x*y)
+
 
 class MajorityJudgmentFixture:
     def test_obvious(self):
