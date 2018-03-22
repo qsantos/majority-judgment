@@ -281,6 +281,102 @@ class PaillierPublicKey:
 
         return PaillierCiphertext(self, cx), PaillierCiphertext(self, cz)
 
+    def prove_private_multiply_batched(self, x, cy_list):
+        """Multiply a secret with several ciphertexts in a verifiable manner
+
+        Arguments:
+            x (int): the secret operand (plaintext)
+            cy_list (list): the list of encrypted operands (PaillierCiphertext)
+
+        Returns:
+            generator: the corresponding protocol
+        """
+        n2 = self.nsquare
+        cy_list = [cy.raw_value for cy in cy_list]
+
+        # encrypted operand and result
+        cx, rx = self.raw_multiply(self.g, x)  # ⟦x⟧
+        cz_rz_list = [self.raw_multiply(cy, x) for cy in cy_list]  # ⟦z⟧ = ⟦xy⟧
+        cz_list = [cz for cz, rz in cz_rz_list]
+        rz_list = [rz for cz, rz in cz_rz_list]
+
+        lambda_list = yield cx, cz_list
+
+        # compute combined ciphertexts
+        cy = util.prod(
+            util.powmod(cy, lambda_, self.nsquare)
+            for cy, lambda_ in zip(cy_list, lambda_list)
+        )
+        cz = util.prod(
+            util.powmod(cz, lambda_, self.nsquare)
+            for cz, lambda_ in zip(cz_list, lambda_list)
+        )
+        rz = util.prod(
+            util.powmod(rz, lambda_, self.n)
+            for rz, lambda_ in zip(rz_list, lambda_list)
+        )
+
+        # random value and commitments
+        u = random.SystemRandom().randrange(self.n)
+        cu, ru = self.raw_multiply(self.g, u)  # ⟦u⟧
+        cyu, ryu = self.raw_multiply(cy, u)  # ⟦yu⟧
+
+        # run protocol
+        challenge = yield cu, cyu
+        rs = ru * util.powmod(rx, challenge, self.n) % self.n
+        rys = ryu * util.powmod(rz, challenge, self.n) % self.n
+        yield u + x*challenge, rs, rys
+
+    def verify_private_multiply_batched(self, cy_list):
+        """Check the proof of multiplication of a ciphertext with a plaintext
+
+        Arguments:
+            cy (PaillierCiphertext): the encrypted operand
+
+        Returns:
+            generator: the corresponding protocol
+
+            The generator itself returns the encrypted missing operand and the
+            encrypted product of the plaintext with the ciphertext.
+        """
+        n2 = self.nsquare
+        cy_list = [cy.raw_value for cy in cy_list]
+
+        # generate random λ_i *after* ciphertexts have been provided
+        cx, cz_list = yield
+        lambda_list = [
+            random.SystemRandom().randrange(2**self.security_parameter)
+            for _ in cy_list
+        ]
+
+        # compute combined ciphertexts
+        cy = util.prod(
+            util.powmod(cy, lambda_, self.nsquare)
+            for cy, lambda_ in zip(cy_list, lambda_list)
+        )
+        cz = util.prod(
+            util.powmod(cz, lambda_, self.nsquare)
+            for cz, lambda_ in zip(cz_list, lambda_list)
+        )
+
+        # run private multiply protocol
+        cu, cyu = yield lambda_list
+        challenge = random.SystemRandom().randrange(2**self.security_parameter)
+        proof, rs, rys = yield challenge  # proof is usually noted s
+
+        # verify proofs
+        cs, _ = self.raw_multiply(self.g, proof, rs)  # ⟦s⟧ = ⟦u + xe⟧
+        cys, _ = self.raw_multiply(cy, proof, rys)  # ⟦ys⟧ = ⟦y(u + xe)⟧
+        # ⟦u⟧ * ⟦x⟧**e = ⟦u + xe⟧ = ⟦s⟧
+        if cs != cu * util.powmod(cx, challenge, n2) % n2:
+            raise InvalidProof
+        # ⟦yu⟧ * ⟦z⟧**e = ⟦yu + yxe⟧ = ⟦ys⟧
+        if cys != cyu * util.powmod(cz, challenge, n2) % n2:
+            raise InvalidProof
+
+        cz_list = [PaillierCiphertext(self, cz) for cz in cz_list]
+        return PaillierCiphertext(self, cx), cz_list
+
     @staticmethod
     def L(u, n):
         """As defined in the Paillier cryptosystem

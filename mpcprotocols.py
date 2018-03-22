@@ -118,26 +118,17 @@ class SharedMockMPCProtocols(MockMPCProtocols):
             their negation
         """
         pk = self.pk_shares[0].public_key
+        x_y_batch = zip(x_batch, y_batch)
 
         for _ in self.pk_shares:
-            r_batch = [random.choice([-1, 1]) for _ in x_batch]
+            x_y_batch = [
+                util.run_protocol(
+                    pk.prove_private_multiply_batched(random.choice([-1, 1]), [x, y]),
+                    pk.verify_private_multiply_batched([x, y]),
+                )[1]
+                for x, y in x_y_batch
+            ]
 
-            rx_batch = []
-            for r, x in zip(r_batch, x_batch):
-                _, x = util.run_protocol(
-                    pk.prove_private_multiply(r, x),
-                    pk.verify_private_multiply(x),
-                )
-                rx_batch.append(x)
-
-            ry_batch = []
-            for r, y in zip(r_batch, y_batch):
-                _, y = util.run_protocol(
-                    pk.prove_private_multiply(r, y),
-                    pk.verify_private_multiply(y),
-                )
-                ry_batch.append(y)
-
-            x_batch, y_batch = rx_batch, ry_batch
-
+        x_batch = [x for x, y in x_y_batch]
+        y_batch = [y for x, y in x_y_batch]
         return x_batch, y_batch

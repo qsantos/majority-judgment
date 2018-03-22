@@ -237,6 +237,18 @@ class TestPaillierShared(unittest.TestCase):
         self.assertEqual(sk.decrypt(cx), x)
         self.assertEqual(sk.decrypt(cz), x*y)
 
+    def test_private_multiply_batched(self):
+        pk, sk = paillier.generate_paillier_keypair(_N_BITS)
+        x, y_list = -2, [42, -10]
+        cy_list = [pk.encrypt(y) for y in y_list]
+        cx, cz_list = util.run_protocol(
+            pk.prove_private_multiply_batched(x, cy_list),
+            pk.verify_private_multiply_batched(cy_list),
+        )
+        for y, cz in zip(y_list, cz_list):
+            self.assertEqual(sk.decrypt(cx), x)
+            self.assertEqual(sk.decrypt(cz), x*y)
+
 
 class MajorityJudgmentFixture:
     def test_obvious(self):
