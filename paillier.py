@@ -171,34 +171,51 @@ class PaillierPublicKey:
         # cache
         self.inverts = {}
 
-    def encrypt(self, m, randomize=True):
+    def encrypt(self, m):
         """Encrypt a message m into a ciphertext
 
         Arguments:
             m (int): the message to be encrypted; note that values will be
                 reduced modulo `n`
-            randomize (bool): every ciphertext should be (re)randomized when
-                shared with the world; however, this operation is not always
-                strictly necessary; if you are not sure whether to randomize,
-                just leave it to its default (True)
 
         Returns:
             PaillierCiphertext: a ciphertext for the given integer `m` it can
                 be decrypted using the secret key corresponding to this public
                 key
         """
-        n2 = self.nsquare
-        m %= self.n  # explicitely reduces m to avoid negative/large exponents
-
-        if self.g == 1 + self.n:
-            raw_value = (1 + self.n * m) % n2
-        else:
-            raw_value = util.powmod(self.g, m, n2)
-
-        if randomize:
-            r = random.SystemRandom().randrange(self.n)
-            raw_value = raw_value * util.powmod(r, self.n, n2) % n2
+        raw_value, _ = self.raw_multiply(self.g, m)
         return PaillierCiphertext(self, raw_value)
+
+    def raw_multiply(self, a, b, randomization=None):
+        """Multiply a raw ciphertext with a plaintext
+
+        Arguments:
+            a (int): a ciphertext for this Paillier public key
+            b (int): a plaintext
+            randomization (int, optional): the randomization factor; if not
+                provided, a secure-random value is chosen
+
+        Returns:
+            tuple: a pair of integers, corresponding to the raw ciphertext
+            encrypting the product of the value encrypted by `a` and the value
+            `b`, and the randomization used
+        """
+        n2 = self.nsquare
+        b %= self.n  # explicitely reduces to avoid negative/large exponents
+
+        # if a is of the form (1+n)^q, then we can avoid the exponentiation
+        q, r = divmod(a-1, self.n)
+        if r == 0:
+            raw_value = (1 + self.n * q * b) % n2
+        else:
+            raw_value = util.powmod(a, b, n2)
+
+        # apply randomization
+        if randomization is None:
+            randomization = random.SystemRandom().randrange(self.n)
+        raw_value = raw_value * util.powmod(randomization, self.n, n2) % n2
+
+        return raw_value, randomization
 
     @staticmethod
     def L(u, n):
@@ -619,10 +636,12 @@ class PaillierCiphertext:
         """
         pk = a.public_key
         if not isinstance(b, PaillierCiphertext):
-            b = pk.encrypt(b, randomize=False)
+            b, _ = pk.raw_multiply(pk.g, b, randomization=1)
         elif b.public_key != pk:
             raise ValueError('cannot sum values under different public keys')
-        return PaillierCiphertext(pk, a.raw_value * b.raw_value % pk.nsquare)
+        else:
+            b = b.raw_value
+        return PaillierCiphertext(pk, a.raw_value * b % pk.nsquare)
 
     def __radd__(a, b):
         """Homomorphically add two Paillier ciphertexts together
@@ -699,16 +718,8 @@ class PaillierCiphertext:
         if isinstance(b, PaillierCiphertext):
             raise NotImplementedError('Have a look at TFHE ;-)')
         pk = a.public_key
-        a = a.raw_value
-        b %= pk.n
-
-        if b > pk.n // 2:
-            # small negatives values are common and it is faster to compute an
-            # invert than an exponentiation to a value close to n
-            b = pk.n - b
-            a = util.invert(a, pk.nsquare)
-
-        return PaillierCiphertext(pk, util.powmod(a, b, pk.nsquare))
+        raw_value, _ = pk.raw_multiply(a.raw_value, b, randomization=1)
+        return PaillierCiphertext(pk, raw_value)
 
     def __rmul__(a, b):
         """Homomorphically multiply a Paillier ciphertext by an integer
