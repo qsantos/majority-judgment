@@ -230,6 +230,8 @@ class TestPaillierShared(unittest.TestCase):
         pk, sk = paillier.generate_paillier_keypair(_N_BITS)
         x, y = -2, 42
         cy = pk.encrypt(y)
+
+        # valid multiplication
         cx, cz = util.run_protocol(
             pk.prove_private_multiply(x, cy),
             pk.verify_private_multiply(cy),
@@ -237,10 +239,17 @@ class TestPaillierShared(unittest.TestCase):
         self.assertEqual(sk.decrypt(cx), x)
         self.assertEqual(sk.decrypt(cz), x*y)
 
+        # invalid multiplication
+        prover = pk.prove_private_multiply(x, cy + 1)
+        verifier = pk.verify_private_multiply(cy)
+        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+
     def test_private_multiply_batched(self):
         pk, sk = paillier.generate_paillier_keypair(_N_BITS)
         x, y_list = -2, [42, -10]
         cy_list = [pk.encrypt(y) for y in y_list]
+
+        # valid multiplications
         cx, cz_list = util.run_protocol(
             pk.prove_private_multiply_batched(x, cy_list),
             pk.verify_private_multiply_batched(cy_list),
@@ -248,6 +257,12 @@ class TestPaillierShared(unittest.TestCase):
         for y, cz in zip(y_list, cz_list):
             self.assertEqual(sk.decrypt(cx), x)
             self.assertEqual(sk.decrypt(cz), x*y)
+
+        # invalid multiplications
+        fake_cy_list = [cy + 1 for cy in cy_list]
+        prover = pk.prove_private_multiply_batched(x, fake_cy_list)
+        verifier = pk.verify_private_multiply_batched(cy_list)
+        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
 
 
 class MajorityJudgmentFixture:
