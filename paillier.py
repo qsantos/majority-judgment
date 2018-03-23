@@ -654,7 +654,7 @@ class PaillierSecretKeyShare:
         """
         pk = self.public_key
         randoms = [
-            random.SystemRandom().randrange(pk.nsquare << 160)
+            random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
             for _ in range(n_uses)
         ]
         self.precomputed_values = [
@@ -674,7 +674,7 @@ class PaillierSecretKeyShare:
             # raises an exception if not enough precomputations were forecast
             r, commitment = self.precomputed_values.pop()
         else:
-            r = random.SystemRandom().randrange(pk.nsquare << 160)
+            r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
             commitment = util.powmod(self.verification_base, r, pk.nsquare)
 
         challenge = yield commitment
@@ -710,7 +710,7 @@ class PaillierSecretKeyShare:
             # raises an exception if not enough precomputations were forecast
             r, left_commitment = self.precomputed_values.pop()
         else:
-            r = random.SystemRandom().randrange(pk.nsquare << 160)
+            r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
             left_commitment = util.powmod(self.verification_base, r, pk.nsquare)
 
         # prove knowledge of key_share such that:
@@ -750,7 +750,7 @@ class PaillierSecretKeyShare:
             # raises an exception if not enough precomputations were forecast
             r, left_commitment = self.precomputed_values.pop()
         else:
-            r = random.SystemRandom().randrange(pk.nsquare << 160)
+            r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
             left_commitment = util.powmod(self.verification_base, r, pk.nsquare)
 
         # prove knowledge of key_share such that:
