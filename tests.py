@@ -244,6 +244,27 @@ class TestPaillierShared(unittest.TestCase):
         verifier = pk.verify_private_multiply(cy)
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
 
+        # prepare pre-computations
+        pk.precompute_proofs([x, x+1])
+
+        # with pre-computations
+        cx, cz = util.run_protocol(
+            pk.prove_private_multiply(x, cy),
+            pk.verify_private_multiply(cy),
+        )
+        self.assertEqual(sk.decrypt(cx), x)
+        self.assertEqual(sk.decrypt(cz), x*y)
+
+        # invalid pre-computations
+        prover = pk.prove_private_multiply(x, cy)
+        verifier = pk.verify_private_multiply(cy)
+        self.assertRaises(ValueError, util.run_protocol, prover, verifier)
+
+        # no enough pre-computations
+        prover = pk.prove_private_multiply(x, cy)
+        verifier = pk.verify_private_multiply(cy)
+        self.assertRaises(IndexError, util.run_protocol, prover, verifier)
+
     def test_private_multiply_batched(self):
         pk, sk = paillier.generate_paillier_keypair(_N_BITS)
         x, y_list = -2, [42, -10]
@@ -263,6 +284,28 @@ class TestPaillierShared(unittest.TestCase):
         prover = pk.prove_private_multiply_batched(x, fake_cy_list)
         verifier = pk.verify_private_multiply_batched(cy_list)
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+
+        # prepare pre-computations
+        pk.precompute_proofs([x, x+1])
+
+        # with pre-computations
+        cx, cz = util.run_protocol(
+            pk.prove_private_multiply_batched(x, cy_list),
+            pk.verify_private_multiply_batched(cy_list),
+        )
+        for y, cz in zip(y_list, cz_list):
+            self.assertEqual(sk.decrypt(cx), x)
+            self.assertEqual(sk.decrypt(cz), x*y)
+
+        # invalid pre-computations
+        prover = pk.prove_private_multiply_batched(x, cy_list)
+        verifier = pk.verify_private_multiply_batched(cy_list)
+        self.assertRaises(ValueError, util.run_protocol, prover, verifier)
+
+        # no enough pre-computations
+        prover = pk.prove_private_multiply_batched(x, cy_list)
+        verifier = pk.verify_private_multiply_batched(cy_list)
+        self.assertRaises(IndexError, util.run_protocol, prover, verifier)
 
 
 class MajorityJudgmentFixture:

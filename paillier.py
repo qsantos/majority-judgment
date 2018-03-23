@@ -171,6 +171,30 @@ class PaillierPublicKey:
         # cache
         self.inverts = {}
 
+    def precompute_proofs(self, plaintexts):
+        """Precompute and cache some values used in the proofs
+
+        Using this function does not decreases (nor increases, assuming the
+        exact value for `n_uses` is provided) the total execution time.
+        However, it can be useful to perform some computation in advance, so
+        that the actual use of the secret shares does not take as much time
+        (i.e. when the inputs to the protocol are known).
+
+        Arguments:
+            plaintexts (list): the plaintext that will be multiplied to the
+                ciphertexts
+        """
+        randoms = [
+            random.SystemRandom().randrange(self.n)
+            for _ in plaintexts
+        ]
+        # note: we reverse the list of plaintext so that they can be given in
+        # the intuitive order of use, but proofs will simply pop values
+        self.precomputed_values = [
+            (x, self.raw_multiply(self.g, x), u, self.raw_multiply(self.g, u))
+            for x, u in zip(reversed(plaintexts), randoms)
+        ]
+
     def encrypt(self, m):
         """Encrypt a message m into a ciphertext
 
@@ -234,13 +258,24 @@ class PaillierPublicKey:
         n2 = self.nsquare
         cy = cy.raw_value
 
-        # encrypted operand and result
-        cx, rx = self.raw_multiply(self.g, x)  # ⟦x⟧
-        cz, rz = self.raw_multiply(cy, x)  # ⟦z⟧ = ⟦xy⟧
+        # precomputable values
+        try:
+            # raises IndexError if not enough precomputations were forecast
+            x_, (cx, rx), u, (cu, ru) = self.precomputed_values.pop()
+        except AttributeError:
+            # no pre-computations
+            u = random.SystemRandom().randrange(self.n)
+            cx, rx = self.raw_multiply(self.g, x)  # ⟦x⟧
+            cu, ru = self.raw_multiply(self.g, u)  # ⟦u⟧
+        else:
+            # ensure consistency with arguments
+            if x is None:
+                x = x_
+            elif x != x_:
+                raise ValueError
 
-        # random value and commitments
-        u = random.SystemRandom().randrange(self.n)
-        cu, ru = self.raw_multiply(self.g, u)  # ⟦u⟧
+        # other encrypted values
+        cz, rz = self.raw_multiply(cy, x)  # ⟦z⟧ = ⟦xy⟧
         cyu, ryu = self.raw_multiply(cy, u)  # ⟦yu⟧
 
         # run protocol
@@ -294,8 +329,23 @@ class PaillierPublicKey:
         n2 = self.nsquare
         cy_list = [cy.raw_value for cy in cy_list]
 
-        # encrypted operand and result
-        cx, rx = self.raw_multiply(self.g, x)  # ⟦x⟧
+        # precomputable values
+        try:
+            # raises IndexError if not enough precomputations were forecast
+            x_, (cx, rx), u, (cu, ru) = self.precomputed_values.pop()
+        except AttributeError:
+            # no pre-computations
+            u = random.SystemRandom().randrange(self.n)
+            cx, rx = self.raw_multiply(self.g, x)  # ⟦x⟧
+            cu, ru = self.raw_multiply(self.g, u)  # ⟦u⟧
+        else:
+            # ensure consistency with arguments
+            if x is None:
+                x = x_
+            elif x != x_:
+                raise ValueError
+
+        # encrypted result
         cz_rz_list = [self.raw_multiply(cy, x) for cy in cy_list]  # ⟦z⟧ = ⟦xy⟧
         cz_list = [cz for cz, rz in cz_rz_list]
         rz_list = [rz for cz, rz in cz_rz_list]
@@ -316,9 +366,7 @@ class PaillierPublicKey:
             for rz, lambda_ in zip(rz_list, lambda_list)
         )
 
-        # random value and commitments
-        u = random.SystemRandom().randrange(self.n)
-        cu, ru = self.raw_multiply(self.g, u)  # ⟦u⟧
+        # other encrypted values
         cyu, ryu = self.raw_multiply(cy, u)  # ⟦yu⟧
 
         # run protocol
