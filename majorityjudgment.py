@@ -416,6 +416,14 @@ def run_test(seed, pk, protocols, n_choices, n_candidates, n_bits):
 
     assert winner == clear_winner
 
+    # check that pre-computation were forecast acurately
+    try:
+        assert not pk.precomputed_values
+        for sk_share in protocols.sk_shares:
+            assert not sk_share.precomputed_values
+    except AttributeError:
+        pass
+
 
 def load_keypair(args):
     if args.parties < 0:
