@@ -123,7 +123,7 @@ class SharedMockMPCProtocols(MockMPCProtocols):
         for _ in self.pk_shares:
             x_y_batch = [
                 util.run_protocol(
-                    pk.prove_private_multiply_batched(random.choice([-1, 1]), [x, y]),
+                    pk.prove_private_multiply_batched(None, [x, y]),
                     pk.verify_private_multiply_batched([x, y]),
                 )[1]
                 for x, y in x_y_batch

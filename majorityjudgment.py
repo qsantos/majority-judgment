@@ -445,10 +445,20 @@ def load_keypair(args):
 
     # prepare key sharing
     pk_shares, sk_shares = paillier.share_paillier_keypair(pk, sk, args.parties)
-    # pre-compute left commitments
+
+    # pre-computations for proofs
+    n_random_negate = args.parties * (
+        (args.candidates * args.choices + 2 * args.candidates) * (args.bits - 1) +  # lsbs
+        ((args.choices-1)*args.candidates + args.candidates*args.candidates) * (2*args.bits-1) +  # gt_gate
+        (args.choices-1) * (args.candidates-1) +  # big_and
+        2*args.candidates*(args.choices-1) + 7*args.candidates*(args.candidates-1)  # and_gate
+    )
+    randoms = [random.choice([-1, 1]) for _ in range(n_random_negate)]
+    pk.precompute_proofs(randoms)
     n_batched_decryptions = 4*args.bits + args.candidates.bit_length() + 6
     for sk_share in sk_shares:
         sk_share.precompute_proofs(n_batched_decryptions)
+    print('Pre-computations done')
 
     return pk, mpcprotocols.SharedMockMPCProtocols(pk_shares, sk_shares)
 
