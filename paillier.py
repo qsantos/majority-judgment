@@ -670,10 +670,11 @@ class PaillierSecretKeyShare:
         """
         pk = self.public_key
 
-        if hasattr(self, 'precomputed_values'):
-            # raises an exception if not enough precomputations were forecast
+        try:
+            # raises IndexError if not enough precomputations were forecast
             r, commitment = self.precomputed_values.pop()
-        else:
+        except AttributeError:
+            # no pre-computations
             r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
             commitment = util.powmod(self.verification_base, r, pk.nsquare)
 
@@ -706,10 +707,11 @@ class PaillierSecretKeyShare:
         pk = self.public_key
         partial_decryption = self.decrypt(ciphertext)
 
-        if hasattr(self, 'precomputed_values'):
-            # raises an exception if not enough precomputations were forecast
+        try:
+            # raises IndexError if not enough precomputations were forecast
             r, left_commitment = self.precomputed_values.pop()
-        else:
+        except AttributeError:
+            # no pre-computations
             r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
             left_commitment = util.powmod(self.verification_base, r, pk.nsquare)
 
@@ -746,10 +748,11 @@ class PaillierSecretKeyShare:
             for ciphertext, lambda_ in zip(ciphertext_batch, lambda_batch)
         )
 
-        if hasattr(self, 'precomputed_values'):
-            # raises an exception if not enough precomputations were forecast
+        try:
+            # raises IndexError if not enough precomputations were forecast
             r, left_commitment = self.precomputed_values.pop()
-        else:
+        except AttributeError:
+            # no pre-computations
             r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
             left_commitment = util.powmod(self.verification_base, r, pk.nsquare)
 
