@@ -639,7 +639,7 @@ class PaillierSecretKeyShare:
         self.verification_base = verification_base
         self.key_share = key_share
 
-    def precompute(self, n_uses):
+    def precompute_proofs(self, n_uses):
         """Precompute and cache some values used in the proofs
 
         Using this function does not decreases (nor increases, assuming the

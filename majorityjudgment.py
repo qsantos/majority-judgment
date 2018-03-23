@@ -80,7 +80,7 @@ class MPCMajorityJudgment(mpcgates.MPCGates):
             return
         print('{} = {}'.format(name, self.debug_decrypt(value)))
 
-    def precompute(self):
+    def precompute_randoms(self):
         """Pre-compute what can be pre-computed
 
         In practice, this means generating encrypted random values, which do
@@ -393,7 +393,7 @@ def run_test(seed, pk, protocols, n_choices, n_candidates, n_bits):
         print('Clear protocol winner is', clear_winner)
 
     election = MPCMajorityJudgment(pk, protocols, n_choices, n_candidates, n_bits)
-    election.precompute()
+    election.precompute_randoms()
 
     # encrypt the ballots
     A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
@@ -448,7 +448,7 @@ def load_keypair(args):
     # pre-compute left commitments
     n_batched_decryptions = 4*args.bits + args.candidates.bit_length() + 6
     for sk_share in sk_shares:
-        sk_share.precompute(n_batched_decryptions)
+        sk_share.precompute_proofs(n_batched_decryptions)
 
     return pk, mpcprotocols.SharedMockMPCProtocols(pk_shares, sk_shares)
 

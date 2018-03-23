@@ -117,7 +117,7 @@ class TestPaillierShared(unittest.TestCase):
 
         # with pre-computations
         for pk_share, sk_share in zip(pk_shares, sk_shares):
-            sk_share.precompute(1)
+            sk_share.precompute_proofs(1)
 
             # ok
             prover = sk_share.prove_knowledge()
@@ -162,7 +162,7 @@ class TestPaillierShared(unittest.TestCase):
 
         # with pre-computations
         for sk_share in sk_shares:
-            sk_share.precompute(1)
+            sk_share.precompute_proofs(1)
 
         # ok
         decryption_shares = [
@@ -205,7 +205,7 @@ class TestPaillierShared(unittest.TestCase):
 
         # with pre-computations
         for sk_share in sk_shares:
-            sk_share.precompute(1)
+            sk_share.precompute_proofs(1)
 
         # ok
         decryption_share_batches = [
@@ -308,7 +308,7 @@ class TestPaillierMajorityJudgment(unittest.TestCase, MajorityJudgmentFixture):
         n_bits = max(x for row in A for x in row).bit_length() + 1
         protocols = mpcprotocols.MockMPCProtocols(sk)
         election = majorityjudgment.MPCMajorityJudgment(pk, protocols, n_choices, n_candidates, n_bits)
-        election.precompute()
+        election.precompute_randoms()
 
         # encrypt the ballots
         A = [[election.pk.encrypt(value) for value in row] for row in A]
