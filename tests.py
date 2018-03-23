@@ -115,11 +115,11 @@ class TestPaillierShared(unittest.TestCase):
         verifier = pk_shares[1].verify_knowledge()
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
 
-        # with pre-computations
         for pk_share, sk_share in zip(pk_shares, sk_shares):
+            # prepare pre-computations
             sk_share.precompute_proofs(1)
 
-            # ok
+            # with pre-computations
             prover = sk_share.prove_knowledge()
             verifier = pk_share.verify_knowledge()
             util.run_protocol(prover, verifier)
@@ -160,11 +160,11 @@ class TestPaillierShared(unittest.TestCase):
         verifier = pk_shares[1].verify_decrypt(ciphertext)
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
 
-        # with pre-computations
+        # prepare pre-computations
         for sk_share in sk_shares:
             sk_share.precompute_proofs(1)
 
-        # ok
+        # with pre-computations
         decryption_shares = [
             util.run_protocol(
                 sk_share.prove_decrypt(ciphertext),
@@ -203,11 +203,11 @@ class TestPaillierShared(unittest.TestCase):
         verifier = pk_shares[1].verify_decrypt_batched(ciphertext_batch)
         self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
 
-        # with pre-computations
+        # prepare pre-computations
         for sk_share in sk_shares:
             sk_share.precompute_proofs(1)
 
-        # ok
+        # with pre-computations
         decryption_share_batches = [
             util.run_protocol(
                 sk_share.prove_decrypt_batched(ciphertext_batch),
