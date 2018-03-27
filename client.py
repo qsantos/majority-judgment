@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import random
+
 import network
 import paillier
 import mpcprotocols
@@ -16,19 +18,62 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
         # initiate prover
         prover = self.sk_share.prove_decrypt_batched(ciphertext_batch)
 
+        # run proof protocol with server
         output = next(prover)
-
+        # round 1
         self.server.send_json(output)
         input = self.server.receive_json()
         output = prover.send(input)
-
+        # round 2
         self.server.send_json(output)
         input = self.server.receive_json()
         output = prover.send(input)
-
+        # round 3
         self.server.send_json(output)
 
+        # receive plaintexts
         return self.server.receive_json()
+
+    def random_negate_batched(self, x_batch, y_batch):
+        pk = self.sk_share.public_key
+
+        x_batch, y_batch = self.server.receive_json()
+        x_batch = [paillier.PaillierCiphertext(pk, x) for x in x_batch]
+        y_batch = [paillier.PaillierCiphertext(pk, y) for y in y_batch]
+
+        # initiate provers
+        prover_batch = [
+            pk.prove_private_multiply_batched(random.choice([-1, 1]), [x, y])
+            for x, y in zip(x_batch, y_batch)
+        ]
+
+        # run proof protocol with server
+        output_batch = [
+            next(prover)
+            for prover in prover_batch
+        ]
+        # round 1
+        self.server.send_json(output_batch)
+        input_batch = self.server.receive_json()
+        output_batch = [
+            prover.send(input)
+            for prover, input in zip(prover_batch, input_batch)
+        ]
+        # round 2
+        self.server.send_json(output_batch)
+        input_batch = self.server.receive_json()
+        output_batch = [
+            prover.send(input)
+            for prover, input in zip(prover_batch, input_batch)
+        ]
+        # round 3
+        self.server.send_json(output_batch)
+
+        # receive final x_batch and y_batch
+        x_batch, y_batch = self.server.receive_json()
+        x_batch = [paillier.PaillierCiphertext(pk, x) for x in x_batch]
+        y_batch = [paillier.PaillierCiphertext(pk, y) for y in y_batch]
+        return x_batch, y_batch
 
 
 def main():

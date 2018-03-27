@@ -49,6 +49,61 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
         # done
         return plaintext_batch
 
+    def random_negate_batched(self, x_batch, y_batch):
+        pk = self.pk_shares[0].public_key
+
+        for client in self.clients:
+            # transmit x_batch and y_batch to next client
+            x_batch_raw = [x.raw_value for x in x_batch]
+            y_batch_raw = [y.raw_value for y in y_batch]
+            client.send_json([x_batch_raw, y_batch_raw])
+
+            # initiate verifiers
+            verifier_batch = [
+                pk.verify_private_multiply_batched([x, y])
+                for x, y in zip(x_batch, y_batch)
+            ]
+
+            # run proof protocol (TODO: non fixed number of rounds)
+            for verifier in verifier_batch:
+                next(verifier)
+            # round 1
+            input_batch = client.receive_json()
+            output_batch = [
+                verifier.send(input)
+                for verifier, input in zip(verifier_batch, input_batch)
+            ]
+            client.send_json(output_batch)
+            # round 2
+            input_batch = client.receive_json()
+            output_batch = [
+                verifier.send(input)
+                for verifier, input in zip(verifier_batch, input_batch)
+            ]
+            client.send_json(output_batch)
+            # round 3
+            results = []
+            input_batch = client.receive_json()
+            for verifier, input in zip(verifier_batch, input_batch):
+                try:
+                    verifier.send(input)
+                except StopIteration as e:
+                    results.append(e.value[1])
+
+            # update x_batch and y_batch
+            x_y_batch = results
+            x_batch = [x for x, y in x_y_batch]
+            y_batch = [y for x, y in x_y_batch]
+
+        # broadcast final value of x_batch and y_batch
+        x_batch_raw = [x.raw_value for x in x_batch]
+        y_batch_raw = [y.raw_value for y in y_batch]
+        for client in self.clients:
+            client.send_json([x_batch_raw, y_batch_raw])
+
+        # done
+        return x_batch, y_batch
+
 
 def main():
     n_choices = 5
