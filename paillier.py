@@ -18,9 +18,9 @@ import util
 # information about s, the prover first squares c; this protects the prover
 _QR = 2
 
-# Chaum-Pedersen proofs are only secure on cyclic groups, like Q_n² (see
-# above); thus, the verifier squares both hands of the equation when they
-# cannot ensure to be working in Q_n; this protects the verifier
+# Shoup only proved the soudness of Chaum-Pedersen proofs in the RSA setting
+# for bases in the cyclic group; thus, the verifier squares both hands of the
+# equation when to ensure to be working in Q_n; this protects the verifier
 _CP = 2
 
 
