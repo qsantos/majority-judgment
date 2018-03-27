@@ -8,71 +8,45 @@ import majorityjudgment
 _BUFFER_SIZE = 2**20
 
 
-class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):  # TODO
+class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
     def __init__(self, pk_shares, clients):
         self.pk_shares = pk_shares
         self.clients = clients
 
     def decrypt_batched(self, ciphertext_batch):
+        # initiate verifiers
         verifiers = [
             pk_share.verify_decrypt_batched(ciphertext_batch)
             for pk_share in self.pk_shares
         ]
 
+        # run proof protocol (TODO: non fixed number of rounds)
         for verifier in verifiers:
             next(verifier)
-
-        partial_decryption_batches = [
-            client.receive_json()['partial_decryption_batch']
-            for client in self.clients
-        ]
-
-        lambda_batches = [
-            verifier.send(partial_decryption_batch)
-            for verifier, partial_decryption_batch in zip(verifiers, partial_decryption_batches)
-        ]
-
-        for client, lambda_batch in zip(self.clients, lambda_batches):
-            m = {'lambda_batch': [
-                lambda_ for lambda_ in lambda_batch
-            ]}
-            client.send_json(m)
-
-        left_commitments = []
-        right_commitments = []
-        for client in self.clients:
-             m = client.receive_json()
-             left_commitments.append(m['left_commitment'])
-             right_commitments.append(m['right_commitment'])
-
-        challenges = [
-            verifier.send((left_commitment, right_commitment))
-            for verifier, left_commitment, right_commitment in zip(verifiers, left_commitments, right_commitments)
-        ]
-
-        for client, challenge in zip(self.clients, challenges):
-            client.send_json({'challenge': challenge})
-
-        proofs = [
-            client.receive_json()['proof']
-            for client in self.clients
-        ]
-
-        for verifier, proof in zip(verifiers, proofs):
+        for verifier, client in zip(verifiers, self.clients):
+            client.send_json(verifier.send(client.receive_json()))
+        for verifier, client in zip(verifiers, self.clients):
+            client.send_json(verifier.send(client.receive_json()))
+        results = []
+        for verifier, client in zip(verifiers, self.clients):
             try:
-                verifier.send(proof)
-            except StopIteration:
-                pass
+                verifier.send(client.receive_json())
+            except StopIteration as e:
+                results.append(e.value)
 
+        # assemble plaintexts
+        partial_decryption_batches = results
         partial_decryptions_batch = zip(*partial_decryption_batches)
         plaintext_batch = [
             paillier.PaillierPublicKeyShare.assemble_decryption_shares(self.pk_shares, partial_decryptions)
             for partial_decryptions in partial_decryptions_batch
         ]
 
-        for client, challenge in zip(self.clients, challenges):
-            client.send_json({'plaintext_batch': plaintext_batch})
+        # broadcast plaintexts
+        for client in self.clients:
+            client.send_json(plaintext_batch)
 
+        # done
         return plaintext_batch
 
 

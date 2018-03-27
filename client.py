@@ -7,39 +7,28 @@ import majorityjudgment
 _BUFFER_SIZE = 2**20
 
 
-class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):  # TODO
+class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
     def __init__(self, sk_share, server):
         self.sk_share = sk_share
         self.server = server
 
     def decrypt_batched(self, ciphertext_batch):
+        # initiate prover
         prover = self.sk_share.prove_decrypt_batched(ciphertext_batch)
 
-        partial_decryption_batch = next(prover)
-        m = {'partial_decryption_batch': [
-            plaintext for plaintext in partial_decryption_batch
-        ]}
-        self.server.send_json(m)
+        output = next(prover)
 
-        m = self.server.receive_json()
-        lambda_batch = m['lambda_batch']
+        self.server.send_json(output)
+        input = self.server.receive_json()
+        output = prover.send(input)
 
-        left_commitment, right_commitment = prover.send(lambda_batch)
-        self.server.send_json({
-            'left_commitment': left_commitment,
-            'right_commitment': right_commitment,
-        })
+        self.server.send_json(output)
+        input = self.server.receive_json()
+        output = prover.send(input)
 
-        m = self.server.receive_json()
-        challenge = m['challenge']
+        self.server.send_json(output)
 
-        proof = prover.send(challenge)
-        self.server.send_json({'proof': proof})
-
-        m = self.server.receive_json()
-        plaintext_batch = m['plaintext_batch']
-
-        return plaintext_batch
+        return self.server.receive_json()
 
 
 def main():
