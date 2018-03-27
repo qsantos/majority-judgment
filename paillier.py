@@ -80,7 +80,8 @@ def share_paillier_keypair(pk, sk, n_shares):
     lambda_ = (sk.p-1)*(sk.q-1) // 2  # λ(n) = lcm(p-1, q-1); p, q safe primes
     exponent = util.crt([0, 1], [lambda_, pk.n])
 
-    # the base must be a quadratic residue
+    # the verification base must generate the quadratic residues; which happens
+    # with overwhelming probability for a random square
     verification_base = random.randrange(pk.nsquare)**2 % pk.nsquare
 
     # split the secret exponent into required number of shares
