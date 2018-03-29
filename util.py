@@ -164,3 +164,11 @@ def random_numbers_totaling(total, count):
     fenceposts = sorted(random.choice(range(total+1)) for _ in range(count-1))
     # return the lengths of these subranges
     return [b - a for a, b in zip([0] + fenceposts, fenceposts + [total])]
+
+
+def slice_warp(l, start, stop=None, step=1):
+    if stop is None:
+        stop = start
+        start = 0
+    for i in range(start, stop, step):
+        yield l[i % len(l)]

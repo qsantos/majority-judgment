@@ -52,48 +52,76 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
     def random_negate_batched(self, x_batch, y_batch):
         pk = self.pk_shares[0].public_key
 
-        for client in self.clients:
-            # transmit x_batch and y_batch to next client
-            x_batch_raw = [x.raw_value for x in x_batch]
-            y_batch_raw = [y.raw_value for y in y_batch]
-            client.send_json([x_batch_raw, y_batch_raw])
+        x_batch = list(x_batch)
+        y_batch = list(y_batch)
 
-            # initiate verifiers
-            verifier_batch = [
-                pk.verify_private_multiply_batched([x, y])
-                for x, y in zip(x_batch, y_batch)
-            ]
+        assert len(x_batch) == len(y_batch)
+
+        stride = (len(x_batch)-1) // len(self.pk_shares) + 1
+        n_rounds = (len(x_batch)-1) // stride + 1
+
+        for client in self.clients:
+            client.send_json(n_rounds)
+
+        for offset in range(0, len(x_batch), stride):
+            n_rounds -= 1
+            verifier_subbatches = []
+            for i, client in enumerate(self.clients):
+                start = offset+stride*i
+                stop = offset+stride*(i+1)
+                x_subbatch = list(util.slice_warp(x_batch, start, stop))
+                y_subbatch = list(util.slice_warp(y_batch, start, stop))
+
+                # transmit x_batch and y_batch to next client
+                x_raw_subbatch = [x.raw_value for x in x_subbatch]
+                y_raw_subbatch = [y.raw_value for y in y_subbatch]
+                client.send_json([x_raw_subbatch, y_raw_subbatch])
+
+                # initiate verifiers
+                verifier_subbatch = [
+                    pk.verify_private_multiply_batched([x, y])
+                    for x, y in zip(x_subbatch, y_subbatch)
+                ]
+                verifier_subbatches.append(verifier_subbatch)
+
+                for verifier in verifier_subbatch:
+                    next(verifier)
+
+            assert len(verifier_subbatches) == len(self.clients)
 
             # run proof protocol (TODO: non fixed number of rounds)
-            for verifier in verifier_batch:
-                next(verifier)
             # round 1
-            input_batch = client.receive_json()
-            output_batch = [
-                verifier.send(input)
-                for verifier, input in zip(verifier_batch, input_batch)
-            ]
-            client.send_json(output_batch)
-            # round 2
-            input_batch = client.receive_json()
-            output_batch = [
-                verifier.send(input)
-                for verifier, input in zip(verifier_batch, input_batch)
-            ]
-            client.send_json(output_batch)
-            # round 3
-            results = []
-            input_batch = client.receive_json()
-            for verifier, input in zip(verifier_batch, input_batch):
-                try:
+            for client, verifier_subbatch in zip(self.clients, verifier_subbatches):
+                input_batch = client.receive_json()
+                output_batch = [
                     verifier.send(input)
-                except StopIteration as e:
-                    results.append(e.value[1])
+                    for verifier, input in zip(verifier_subbatch, input_batch)
+                ]
+                client.send_json(output_batch)
 
-            # update x_batch and y_batch
-            x_y_batch = results
-            x_batch = [x for x, y in x_y_batch]
-            y_batch = [y for x, y in x_y_batch]
+            # round 2
+            for client, verifier_subbatch in zip(self.clients, verifier_subbatches):
+                input_batch = client.receive_json()
+                output_batch = [
+                    verifier.send(input)
+                    for verifier, input in zip(verifier_subbatch, input_batch)
+                ]
+                client.send_json(output_batch)
+
+            # round 3
+            for i, (client, verifier_subbatch) in enumerate(zip(self.clients, verifier_subbatches)):
+                input_batch = client.receive_json()
+                for j, (verifier, input) in enumerate(zip(verifier_subbatch, input_batch)):
+                    try:
+                        verifier.send(input)
+                    except StopIteration as e:
+                        x, y = e.value[1]
+                        # update x_batch and y_batch
+                        index = (offset+stride*i+j) % len(x_batch)
+                        x_batch[index] = x
+                        y_batch[index] = y
+
+        assert n_rounds == 0
 
         # broadcast final value of x_batch and y_batch
         x_batch_raw = [x.raw_value for x in x_batch]
