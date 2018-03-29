@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import random
+import argparse
 
 import network
 import paillier
@@ -80,8 +81,15 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.description = 'Run an MPC node for majority judgment'
+    parser.add_argument('host', nargs='?', default='localhost')
+    parser.add_argument('port', nargs='?', default=4242, type=int)
+    args = parser.parse_args()
+
+    print('Connecting to {}:{}'.format(args.host, args.port))
     server = network.MessageSocket()
-    server.connect(('localhost', 4242))
+    server.connect((args.host, args.port))
     setup = server.receive_json()
 
     n_choices = setup['n_choices']
