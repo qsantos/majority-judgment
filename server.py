@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import datetime
+
 import util
 import network
 import paillier
@@ -175,10 +177,12 @@ def main():
         setup['sk_share'] = sk_share.key_share
         client.send_json(setup)
 
-    # encrypt the ballots
-    A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
+    # wait for the clients to be ready
+    for client, sk_share in zip(clients, sk_shares):
+        assert client.receive_json() == 'READY'
 
     # broadcast A
+    A = [[election.pk.encrypt(value) for value in row] for row in clear_A]
     raw_A = [
         [x.raw_value for x in row]
         for row in A
@@ -186,7 +190,11 @@ def main():
     for client in clients:
         client.send_json(raw_A)
 
+    # run the election
+    start = datetime.datetime.now()
     winner = election.run(A)
+    elapsed = datetime.datetime.now() - start
+    print('Finished in {}'.format(elapsed))
     print(winner)
     assert winner == majorityjudgment.clear_majority_judgment(clear_A)
 

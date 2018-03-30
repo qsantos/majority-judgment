@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import random
 import argparse
+import datetime
 
 import network
 import paillier
@@ -114,6 +115,8 @@ def main():
         paillier.PaillierCiphertext(pk, x)
         for x in setup['random_ints']
     ]
+    server.send_json('READY')
+    print('Ready to run the election')
 
     # retrieve A
     A = server.receive_json()
@@ -122,7 +125,11 @@ def main():
         for row in A
     ]
 
+    # run the election
+    start = datetime.datetime.now()
     election.run(A)
+    elapsed = datetime.datetime.now() - start
+    print('Finished in {}'.format(elapsed))
 
 
 if __name__ == '__main__':
