@@ -155,8 +155,6 @@ def main():
 
     # setup
     pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(n_parties, safe_primes=False)
-    import random
-    random.seed(0)
     protocols = SharedPaillierServerProtocols(pk_shares, clients)
     election = majorityjudgment.MPCMajorityJudgment(pk, protocols, n_choices, n_candidates, n_bits)
     election.precompute_randoms()
@@ -168,6 +166,8 @@ def main():
         'g': pk.g,
         'verification_base': sk_shares[0].verification_base,
         'pk_shares': [sk_share.key_share for sk_share in sk_shares],
+        'random_bits': [x.raw_value for x in election.random_bits],
+        'random_ints': [x.raw_value for x in election.random_ints],
     }
 
     # broadcast setup to parties

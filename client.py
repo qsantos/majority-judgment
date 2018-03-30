@@ -105,10 +105,15 @@ def main():
     # TOOD: sk_share.precompute
 
     protocols = SharedPaillierClientProtocols(sk_share, server)
-    import random
-    random.seed(0)
     election = majorityjudgment.MPCMajorityJudgment(pk, protocols, n_choices, n_candidates, n_bits)
-    election.precompute_randoms()
+    election.random_bits = [
+        paillier.PaillierCiphertext(pk, x)
+        for x in setup['random_bits']
+    ]
+    election.random_ints = [
+        paillier.PaillierCiphertext(pk, x)
+        for x in setup['random_ints']
+    ]
 
     # retrieve A
     A = server.receive_json()

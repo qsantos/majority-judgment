@@ -87,12 +87,11 @@ class MPCMajorityJudgment(mpcgates.MPCGates):
         not depend on any input.
         """
         self.random_bits = [
-            random.choice([self.ZERO, self.ONE])
+            self.pk.encrypt(random.choice([0, 1]))
             for _ in range(self.n_candidates*(self.n_choices+2)*self.n_bits)
         ]
-        _max = 2**self.pk.security_parameter
         self.random_ints = [
-            self.pk.encrypt(random.randrange(_max), randomize=False)
+            self.pk.encrypt(random.randrange(2**self.pk.security_parameter))
             for _ in range(self.n_candidates*(self.n_choices+2))
         ]
 
