@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import datetime
 
 import util
@@ -155,8 +156,26 @@ def main():
         client, addr = listener.accept()
         clients.append(client)
 
+    # load cached keys or generate new ones
+    try:
+        with open('key.cache') as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.decoder.JSONDecodeError):
+        print('Generating keys')
+        pk, sk = paillier.generate_paillier_keypair()
+        # cache them
+        with open('key.cache', 'w') as f:
+            json.dump({'p': sk.p, 'q': sk.q, 'g': pk.g}, f)
+        print('Key generated')
+    else:
+        sk = paillier.PaillierSecretKey(data['p'], data['q'], data['g'])
+        pk = sk.public_key
+        print('Keys loaded')
+
+    # share keypair
+    pk_shares, sk_shares = paillier.share_paillier_keypair(pk, sk, n_parties)
+
     # setup
-    pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(n_parties, safe_primes=False)
     protocols = SharedPaillierServerProtocols(pk_shares, clients)
     election = majorityjudgment.MPCMajorityJudgment(pk, protocols, n_choices, n_candidates, n_bits)
     election.precompute_randoms()
