@@ -149,6 +149,7 @@ def main():
     ]
 
     # wait for all parties to connect
+    print('Waiting for clients to connect')
     listener = network.MessageSocket()
     listener.listen(('', 4242))
     clients = []
@@ -179,6 +180,9 @@ def main():
     protocols = SharedPaillierServerProtocols(pk_shares, clients)
     election = majorityjudgment.MPCMajorityJudgment(pk, protocols, n_choices, n_candidates, n_bits)
     election.precompute_randoms()
+
+    # broadcast setup to parties
+    print('Distributing keys')
     setup = {
         'n_choices': n_choices,
         'n_candidates': n_candidates,
@@ -190,13 +194,12 @@ def main():
         'random_bits': [x.raw_value for x in election.random_bits],
         'random_ints': [x.raw_value for x in election.random_ints],
     }
-
-    # broadcast setup to parties
     for client, sk_share in zip(clients, sk_shares):
         setup['sk_share'] = sk_share.key_share
         client.send_json(setup)
 
     # wait for the clients to be ready
+    print('Waiting for clients to be ready')
     for client, sk_share in zip(clients, sk_shares):
         assert client.receive_json() == 'READY'
 
@@ -210,6 +213,7 @@ def main():
         client.send_json(raw_A)
 
     # run the election
+    print('Election started')
     start = datetime.datetime.now()
     winner = election.run(A)
     elapsed = datetime.datetime.now() - start

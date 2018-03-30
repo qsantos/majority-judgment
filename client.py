@@ -139,6 +139,7 @@ def main():
     ]
 
     # run the election
+    print('Here we go!')
     start = datetime.datetime.now()
     election.run(A)
     elapsed = datetime.datetime.now() - start
