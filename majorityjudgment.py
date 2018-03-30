@@ -463,7 +463,7 @@ def load_keypair(args):
     )
     randoms = [random.choice([-1, 1]) for _ in range(n_random_negate)]
     pk.precompute_proofs(randoms)
-    n_batched_decryptions = 4*args.bits + args.candidates.bit_length() + 6
+    n_batched_decryptions = 4*args.bits + (args.candidates-1).bit_length() + 6
     for sk_share in sk_shares:
         sk_share.precompute_proofs(n_batched_decryptions)
     print('Pre-computations done')
