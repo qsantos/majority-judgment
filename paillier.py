@@ -196,19 +196,23 @@ class PaillierPublicKey:
             for x, u in zip(reversed(plaintexts), randoms)
         ]
 
-    def encrypt(self, m):
+    def encrypt(self, m, randomize=True):
         """Encrypt a message m into a ciphertext
 
         Arguments:
             m (int): the message to be encrypted; note that values will be
                 reduced modulo `n`
+            randomize (bool): every ciphertext should be (re)randomized when
+                shared with the world; however, this operation is not always
+                strictly necessary; if you are not sure whether to randomize,
+                just leave it to its default (True)
 
         Returns:
             PaillierCiphertext: a ciphertext for the given integer `m` it can
                 be decrypted using the secret key corresponding to this public
                 key
         """
-        raw_value, _ = self.raw_multiply(self.g, m)
+        raw_value, _ = self.raw_multiply(self.g, m, None if randomize else 1)
         return PaillierCiphertext(self, raw_value)
 
     def raw_multiply(self, a, b, randomization=None):
