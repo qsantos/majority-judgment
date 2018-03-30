@@ -82,11 +82,11 @@ def share_paillier_keypair(pk, sk, n_shares):
 
     # the verification base must generate the quadratic residues; which happens
     # with overwhelming probability for a random square
-    verification_base = random.randrange(pk.nsquare)**2 % pk.nsquare
+    verification_base = random.SystemRandom().randrange(pk.nsquare)**2 % pk.nsquare
 
     # split the secret exponent into required number of shares
     key_shares = [
-        random.randrange(pk.n * lambda_)
+        random.SystemRandom().randrange(pk.n * lambda_)
         for _ in range(n_shares-1)
     ]
     key_shares.append((exponent - sum(key_shares)) % (pk.n * lambda_))
