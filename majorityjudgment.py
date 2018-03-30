@@ -12,10 +12,10 @@ pairings.
 Depends on `gmpy2`
 """
 import math
-import time
 import json
 import random
 import argparse
+import datetime
 
 import util
 import mock
@@ -401,12 +401,12 @@ def run_test(seed, pk, protocols, n_choices, n_candidates, n_bits):
     # encrypted protocol
     if debug_level >= 2:
         print('Running majority judgment encrypted')
-    start = time.time()
+    start = datetime.datetime.now()
     winner = election.run(A)
-    elapsed = time.time() - start
+    elapsed = datetime.datetime.now() - start
     if debug_level >= 1:
         print('Encrypted protocol winner is', winner)
-        print('Took: {:.1f} s'.format(elapsed))
+        print('Finished in {}'.format(elapsed))
 
     # show number of calls to oracle
     if debug_level >= 1:
