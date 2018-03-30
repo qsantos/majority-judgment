@@ -48,7 +48,7 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
 
             # initiate provers
             prover_batch = [
-                pk.prove_private_multiply_batched(random.SystemRandom().choice([-1, 1]), [x, y])
+                pk.prove_private_multiply_batched(None, [x, y])
                 for x, y in zip(x_batch, y_batch)
             ]
 
@@ -105,6 +105,19 @@ def main():
     sk_share = paillier.PaillierSecretKeyShare(pk, setup['verification_base'], setup['sk_share'])
     # TOOD: sk_share.precompute
 
+    # pre-computations for proofs
+    n_random_negate = (
+        (n_candidates * n_choices + 2 * n_candidates) * (n_bits - 1) +  # lsbs
+        ((n_choices-1)*n_candidates + n_candidates*n_candidates) * (2*n_bits-1) +  # gt_gate
+        (n_choices-1) * (n_candidates-1) +  # big_and
+        2*n_candidates*(n_choices-1) + 7*n_candidates*(n_candidates-1)  # and_gate
+    )
+    randoms = [random.choice([-1, 1]) for _ in range(n_random_negate)]
+    pk.precompute_proofs(randoms)
+    n_batched_decryptions = 4*n_bits + (n_candidates-1).bit_length() + 6
+    sk_share.precompute_proofs(n_batched_decryptions)
+    print('Pre-computations done')
+
     protocols = SharedPaillierClientProtocols(sk_share, server)
     election = majorityjudgment.MPCMajorityJudgment(pk, protocols, n_choices, n_candidates, n_bits)
     election.random_bits = [
@@ -130,6 +143,9 @@ def main():
     election.run(A)
     elapsed = datetime.datetime.now() - start
     print('Finished in {}'.format(elapsed))
+
+    assert not pk.precomputed_values
+    assert not sk_share.precomputed_values
 
 
 if __name__ == '__main__':
