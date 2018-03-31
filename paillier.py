@@ -281,10 +281,12 @@ class PaillierPublicKey:
             cy (PaillierCiphertext): the encrypted operand
 
         Returns:
-            generator: the corresponding protocol
+            tuple: `cx`, `cz`, `proof` where `cx` is an encryption
+            (PaillierCiphertext) of x, `cz` is an encryption
+            (PaillierCiphertext) of x*y and `proof` is a proof (int)
+            that z = x * y
         """
         n2 = self.nsquare
-        cy = cy.raw_value
 
         # precomputable values
         try:
@@ -311,25 +313,23 @@ class PaillierPublicKey:
         rs = ru * util.powmod(rx, h, self.n) % self.n
         rys = ryu * util.powmod(rz, h, self.n) % self.n
         w = u + x*h
-        yield cx, cz, cu, cyu, w, rs, rys
+        proof = cu, cyu, w, rs, rys
 
-    def verify_private_multiply(self, cy):
+        return cx, cz, proof
+
+    def verify_private_multiply(self, cx, cy, cz, proof):
         """Check the proof of multiplication of a ciphertext with a plaintext
 
         Arguments:
-            cy (PaillierCiphertext): the encrypted operand
-
-        Returns:
-            generator: the corresponding protocol
-
-            The generator itself returns the encrypted missing operand and the
-            encrypted product of the plaintext with the ciphertext.
+            cx (int): the encrypted left operand
+            cy (int): the encrypted right operand
+            cz (int): the encrypted result
+            proof (int): a proof that z = x*y
         """
         n2 = self.nsquare
-        cy = cy.raw_value
 
         # run protocol in the Fiat-Shamir heuristic
-        cx, cz, cu, cyu, w, rs, rys = yield
+        cu, cyu, w, rs, rys = proof
         h = H([cx, cy, cz, cu, cyu])
 
         # verify proofs
@@ -342,8 +342,6 @@ class PaillierPublicKey:
         if cys != cyu * util.powmod(cz, h, n2) % n2:
             raise InvalidProof
 
-        return PaillierCiphertext(self, cx), PaillierCiphertext(self, cz)
-
     def prove_private_multiply_batched(self, x, cy_list):
         """Multiply a secret with several ciphertexts in a verifiable manner
 
@@ -352,10 +350,12 @@ class PaillierPublicKey:
             cy_list (list): the list of encrypted operands (PaillierCiphertext)
 
         Returns:
-            generator: the corresponding protocol
+            tuple: `cx`, `cz_list`, `proof` where `cx` is an encryption
+            (PaillierCiphertext) of x, `cz_list` is a list of encryptions
+            (PaillierCiphertext) of x*y for each y in `cy_list`, and `proof`
+            (int) is a proof that z = x*y for each y, z in cy_list, cz_list
         """
         n2 = self.nsquare
-        cy_list = [cy.raw_value for cy in cy_list]
 
         # precomputable values
         try:
@@ -402,25 +402,24 @@ class PaillierPublicKey:
         rs = ru * util.powmod(rx, h, self.n) % self.n
         rys = ryu * util.powmod(rz, h, self.n) % self.n
         w = u + x*h
-        yield cx, cz_list, cu, cyu, w, rs, rys
+        proof = cu, cyu, w, rs, rys
 
-    def verify_private_multiply_batched(self, cy_list):
+        return cx, cz_list, proof
+
+    def verify_private_multiply_batched(self, cx, cy_list, cz_list, proof):
         """Check the proof of multiplication of a ciphertext with a plaintext
 
         Arguments:
-            cy (PaillierCiphertext): the encrypted operand
-
-        Returns:
-            generator: the corresponding protocol
-
-            The generator itself returns the encrypted missing operand and the
-            encrypted product of the plaintext with the ciphertext.
+            cx (PaillierCiphertext): the encrypted left operand
+            cy_list (list): the encrypted right operands (PaillierCiphertext)
+            cz_list (list): the encrypted products (PaillierCiphertext) of x*y
+                for each y in `cy_list`
+            proof (int): a proof that z = x*y for each y, z in cy_list, cz_list
         """
         n2 = self.nsquare
-        cy_list = [cy.raw_value for cy in cy_list]
 
         # generate random λ_i *after* ciphertexts have been provided
-        cx, cz_list, cu, cyu, w, rs, rys = yield
+        cu, cyu, w, rs, rys = proof
         lambda_list = [H([cx, cy, cz]) for cy, cz in zip(cy_list, cz_list)]
 
         # compute combined ciphertexts
@@ -445,9 +444,6 @@ class PaillierPublicKey:
         # ⟦yu⟧ * ⟦z⟧**e = ⟦yu + yxe⟧ = ⟦ys⟧
         if cys != cyu * util.powmod(cz, h, n2) % n2:
             raise InvalidProof
-
-        cz_list = [PaillierCiphertext(self, cz) for cz in cz_list]
-        return PaillierCiphertext(self, cx), cz_list
 
     @staticmethod
     def L(u, n):
@@ -554,17 +550,17 @@ class PaillierPublicKeyShare:
         self.verification_base = verification_base
         self.verification = verification  # v_i = v^{s_i}
 
-    def verify_knowledge(self):
+    def verify_knowledge(self, proof):
         """Check the proof of knowledge of the corresponding secret key
 
-        Returns:
-            generator: the corresponding protocol
+        Arguments:
+            proof (int): a proof of knowledge of the secret key
         """
         pk = self.public_key
         n2 = pk.nsquare
 
         # run Schnorr protocol in the Fiat-Shamir heuristic
-        t, w = yield
+        t, w = proof
         h = H([self.verification_base, self.verification, t])
 
         # verify proof
@@ -572,26 +568,22 @@ class PaillierPublicKeyShare:
                 t * util.powmod(self.verification, h, n2) % n2:
             raise InvalidProof
 
-    def verify_decrypt(self, ciphertext):
+    def verify_decrypt(self, ciphertext, partial_decryption, proof):
         """Check the proof of decryption of the corresponding secret key
 
         Arguments:
             ciphertext (PaillierCiphertext): the ciphertext to be decrypted in
                 a verifiable manner
-
-        Returns:
-            generator: the corresponding protocol
-
-            The generator itself returns a decryption share (int) of the
-            ciphertext, to be given to `assemble_decryption_shares` along with
-            the decryption shares from the other secret key shares
+            partial_decryption (int): the corresponding partial decryption
+            proof (int): a proof that `partial_decryption` is indeed a partial
+                decryption of `ciphertext` under the corresponding secret key
         """
 
         pk = self.public_key
         n2 = pk.nsquare
 
         # run Chaum-Pedersen protocol in the Fiat-Shamir heuristic
-        partial_decryption, t1, t2, w = yield
+        t1, t2, w = proof
         h = H([
             ciphertext.raw_value, partial_decryption, t1,
             self.verification_base, self.verification, t2,
@@ -607,29 +599,23 @@ class PaillierPublicKeyShare:
                 t2 * util.powmod(partial_decryption, _CP*h, n2) % n2:
             raise InvalidProof
 
-        return partial_decryption
-
-    def verify_decrypt_batched(self, ciphertext_batch):
+    def verify_decrypt_batched(self, ciphertext_batch, partial_decryption_batch, proof):
         """Batched version of `verify_decrypt()`
 
         Arguments:
             ciphertext_batch (list): the ciphertexts (PaillierCiphertext) to be
                 decrypted in a verifiable manner
-
-        Returns:
-            generator: the corresponding protocol
-
-            The generator itself returns a list; each element is an integer
-            corresponding to the decryption share of the corresponding
-            ciphertext from `ciphertext_batch` (i.e. in the same order), to be
-            given to `assemble_decryption_shares` with other decryption shares
-            of this particular ciphertext from the other secret key shares
+            partial_decryption_batch (list): the corresponding partial
+                decryptions (int)
+            proof: a proof that each element of `partial_decryption_batch` is
+                indeed a partial decryption of the corresponding element in
+                `ciphertext_batch` under the secret key corresponding to self
         """
         pk = self.public_key
         n2 = pk.nsquare
 
         # run protocol in the Fiat-Shamir heuristic
-        partial_decryption_batch, t1, t2, w = yield
+        t1, t2, w = proof
 
         # generate random λ_i *after* decryption shares have been provided
         lambda_batch = [
@@ -660,8 +646,6 @@ class PaillierPublicKeyShare:
         if util.powmod(combined_ciphertext, _CP*_QR*w, n2) != \
                 t2 * util.powmod(combined_plaintext, _CP*h, n2) % n2:
             raise InvalidProof
-
-        return partial_decryption_batch
 
     @staticmethod
     def assemble_decryption_shares(shares, decryption_shares, relative=True):
@@ -747,7 +731,7 @@ class PaillierSecretKeyShare:
         """Proves knowldege of the secret key share
 
         Returns:
-            generator: the corresponding protocol
+            int: the proof
         """
         pk = self.public_key
         n2 = pk.nsquare
@@ -763,7 +747,8 @@ class PaillierSecretKeyShare:
         # run Schnorr protocol in the Fiat-Shamir heuristic
         h = H([self.verification_base, self.verification, t])
         w = r + h * self.key_share
-        yield t, w
+        proof = t, w
+        return proof
 
     def decrypt(self, ciphertext):
         """(Partially) decrypt a ciphertext
@@ -786,7 +771,9 @@ class PaillierSecretKeyShare:
             ciphertext (PaillierCiphertext): the ciphertext to be decrypted
 
         Returns:
-            generator: the corresponding protocol
+            tuple: `partial_decryption`, `proof` where `partial_decryption` is
+            the partial decryption (int) of the ciphertext, and `proof` is a
+            proof (int) that it is indeed so
         """
         pk = self.public_key
         n2 = pk.nsquare
@@ -811,7 +798,8 @@ class PaillierSecretKeyShare:
             self.verification_base, self.verification, t2,
         ])
         w = r + h * self.key_share
-        yield partial_decryption, t1, t2, w
+        proof = t1, t2, w
+        return partial_decryption, proof
 
     def prove_decrypt_batched(self, ciphertext_batch):
         """Batched version of `prove_decrypt()`
@@ -821,7 +809,10 @@ class PaillierSecretKeyShare:
                 decrypted in a verifiable manner
 
         Returns:
-            generator: the corresponding protocol
+            tuple: `partial_decryption_batch`, `proof` where
+            `partial_decryption_batch` is a list of the partial decryptions
+            (int) of the ciphertexts, and `proof` is a proof (int) that they
+            are indeed so
         """
         pk = self.public_key
         n2 = pk.nsquare
@@ -865,7 +856,8 @@ class PaillierSecretKeyShare:
             self.verification_base, self.verification, t2,
         ])
         w = r + h * self.key_share
-        yield partial_decryption_batch, t1, t2, w
+        proof = t1, t2, w
+        return partial_decryption_batch, proof
 
 
 class PaillierCiphertext:

@@ -18,24 +18,14 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
         self.clients = clients
 
     def decrypt_batched(self, ciphertext_batch):
-        # initiate verifiers
-        verifiers = [
-            pk_share.verify_decrypt_batched(ciphertext_batch)
-            for pk_share in self.pk_shares
-        ]
-
-        # run proof protocol
-        for verifier in verifiers:
-            next(verifier)
-        results = []
-        for verifier, client in zip(verifiers, self.clients):
-            try:
-                verifier.send(client.receive_json())
-            except StopIteration as e:
-                results.append(e.value)
+        # collect partial decryptions and verify proofs
+        partial_decryption_batches = []
+        for pk_share, client in zip(self.pk_shares, self.clients):
+            partial_decryption_batch, proof = client.receive_json()
+            pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
+            partial_decryption_batches.append(partial_decryption_batch)
 
         # assemble plaintexts
-        partial_decryption_batches = results
         partial_decryptions_batch = zip(*partial_decryption_batches)
         plaintext_batch = [
             paillier.PaillierPublicKeyShare.assemble_decryption_shares(self.pk_shares, partial_decryptions)
@@ -52,8 +42,8 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
     def random_negate_batched(self, x_batch, y_batch):
         pk = self.pk_shares[0].public_key
 
-        x_batch = list(x_batch)
-        y_batch = list(y_batch)
+        x_batch = [x.raw_value for x in x_batch]
+        y_batch = [y.raw_value for y in y_batch]
 
         assert len(x_batch) == len(y_batch)
 
@@ -64,8 +54,8 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
             client.send_json(n_rounds)
 
         for offset in range(0, len(x_batch), stride):
-            n_rounds -= 1
-            verifier_subbatches = []
+            # split into subbatches for pipelining
+            cy_list_batches = []
             for i, client in enumerate(self.clients):
                 start = offset+stride*i
                 stop = offset+stride*(i+1)
@@ -73,44 +63,27 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
                 y_subbatch = list(util.slice_warp(y_batch, start, stop))
 
                 # transmit x_batch and y_batch to next client
-                x_raw_subbatch = [x.raw_value for x in x_subbatch]
-                y_raw_subbatch = [y.raw_value for y in y_subbatch]
-                client.send_json([x_raw_subbatch, y_raw_subbatch])
+                client.send_json([x_subbatch, y_subbatch])
+                cy_list_batch = list(zip(x_subbatch, y_subbatch))
+                cy_list_batches.append(cy_list_batch)
 
-                # initiate verifiers
-                verifier_subbatch = [
-                    pk.verify_private_multiply_batched([x, y])
-                    for x, y in zip(x_subbatch, y_subbatch)
-                ]
-                verifier_subbatches.append(verifier_subbatch)
+            # collect randomly negated values and verify proofs
+            for i, (client, cy_list_batch) in enumerate(zip(self.clients, cy_list_batches)):
+                cx_cz_list_proof_batch = client.receive_json()
+                for j, (cy_list, (cx, cz_list, proof)) in enumerate(zip(cy_list_batch, cx_cz_list_proof_batch)):
+                    pk.verify_private_multiply_batched(cx, cy_list, cz_list, proof)
 
-                for verifier in verifier_subbatch:
-                    next(verifier)
-
-            assert len(verifier_subbatches) == len(self.clients)
-
-            # run proof protocol
-            for i, (client, verifier_subbatch) in enumerate(zip(self.clients, verifier_subbatches)):
-                input_batch = client.receive_json()
-                for j, (verifier, input) in enumerate(zip(verifier_subbatch, input_batch)):
-                    try:
-                        verifier.send(input)
-                    except StopIteration as e:
-                        x, y = e.value[1]
-                        # update x_batch and y_batch
-                        index = (offset+stride*i+j) % len(x_batch)
-                        x_batch[index] = x
-                        y_batch[index] = y
-
-        assert n_rounds == 0
+                    # update x_batch and y_batch
+                    index = (offset+stride*i+j) % len(x_batch)
+                    x_batch[index], y_batch[index] = cz_list
 
         # broadcast final value of x_batch and y_batch
-        x_batch_raw = [x.raw_value for x in x_batch]
-        y_batch_raw = [y.raw_value for y in y_batch]
         for client in self.clients:
-            client.send_json([x_batch_raw, y_batch_raw])
+            client.send_json([x_batch, y_batch])
 
         # done
+        x_batch = [paillier.PaillierCiphertext(pk, x) for x in x_batch]
+        y_batch = [paillier.PaillierCiphertext(pk, y) for y in y_batch]
         return x_batch, y_batch
 
 

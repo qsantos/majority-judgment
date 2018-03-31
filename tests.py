@@ -112,38 +112,33 @@ class TestPaillierShared(unittest.TestCase):
 
         # valid proofs
         for pk_share, sk_share in zip(pk_shares, sk_shares):
-            prover = sk_share.prove_knowledge()
-            verifier = pk_share.verify_knowledge()
-            util.run_protocol(prover, verifier)
+            proof = sk_share.prove_knowledge()
+            pk_share.verify_knowledge(proof)
 
         # invalid proof
-        prover = sk_shares[0].prove_knowledge()
-        verifier = pk_shares[1].verify_knowledge()
-        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+        proof = sk_shares[0].prove_knowledge()
+        self.assertRaises(paillier.InvalidProof, pk_shares[1].verify_knowledge, proof)
 
         for pk_share, sk_share in zip(pk_shares, sk_shares):
             # prepare pre-computations
             sk_share.precompute_proofs(1)
 
             # with pre-computations
-            prover = sk_share.prove_knowledge()
-            verifier = pk_share.verify_knowledge()
-            util.run_protocol(prover, verifier)
+            proof = sk_share.prove_knowledge()
+            pk_share.verify_knowledge(proof)
 
             # not enough pre-computations
-            prover = sk_share.prove_knowledge()
-            verifier = pk_share.verify_knowledge()
-            self.assertRaises(IndexError, util.run_protocol, prover, verifier)
+            self.assertRaises(IndexError, sk_share.prove_knowledge)
 
     def test_decryption(self):
         pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(3, _N_BITS)
         ciphertext = pk.encrypt(-42)
 
-        decryption_shares = [
+        partial_decryptions = [
             sk_share.decrypt(ciphertext)
             for sk_share in sk_shares
         ]
-        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
         self.assertEqual(plaintext, -42)
 
     def test_proof_of_decryption(self):
@@ -151,167 +146,136 @@ class TestPaillierShared(unittest.TestCase):
         ciphertext = pk.encrypt(42)
 
         # valid decryption
-        decryption_shares = [
-            util.run_protocol(
-                sk_share.prove_decrypt(ciphertext),
-                pk_share.verify_decrypt(ciphertext),
-            )
-            for pk_share, sk_share in zip(pk_shares, sk_shares)
-        ]
-        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+        partial_decryptions = []
+        for pk_share, sk_share in zip(pk_shares, sk_shares):
+            partial_decryption, proof = sk_share.prove_decrypt(ciphertext)
+            pk_share.verify_decrypt(ciphertext, partial_decryption, proof)
+            partial_decryptions.append(partial_decryption)
+        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
         self.assertEqual(plaintext, 42)
 
         # invalid decryption
-        prover = sk_shares[0].prove_decrypt(ciphertext)
-        verifier = pk_shares[1].verify_decrypt(ciphertext)
-        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+        partial_decryption, proof = sk_shares[0].prove_decrypt(ciphertext)
+        self.assertRaises(paillier.InvalidProof, pk_shares[1].verify_decrypt, ciphertext, partial_decryption, proof)
 
         # prepare pre-computations
         for sk_share in sk_shares:
             sk_share.precompute_proofs(1)
 
         # with pre-computations
-        decryption_shares = [
-            util.run_protocol(
-                sk_share.prove_decrypt(ciphertext),
-                pk_share.verify_decrypt(ciphertext),
-            )
-            for pk_share, sk_share in zip(pk_shares, sk_shares)
-        ]
-        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+        partial_decryptions = []
+        for pk_share, sk_share in zip(pk_shares, sk_shares):
+            partial_decryption, proof = sk_share.prove_decrypt(ciphertext)
+            pk_share.verify_decrypt(ciphertext, partial_decryption, proof)
+            partial_decryptions.append(partial_decryption)
+        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
         self.assertEqual(plaintext, 42)
 
         # not enough pre-computations
         for pk_share, sk_share in zip(pk_shares, sk_shares):
-            prover = sk_share.prove_decrypt(ciphertext)
-            verifier = pk_share.verify_decrypt(ciphertext)
-            self.assertRaises(IndexError, util.run_protocol, prover, verifier)
+            self.assertRaises(IndexError, sk_share.prove_decrypt, ciphertext)
 
     def test_proof_of_decryption_batched(self):
         pk, pk_shares, sk_shares = paillier.generate_paillier_keypair_shares(3, _N_BITS)
         ciphertext_batch = [pk.encrypt(i) for i in range(100)]
 
         # valid decryptions
-        decryption_share_batches = [
-            util.run_protocol(
-                sk_share.prove_decrypt_batched(ciphertext_batch),
-                pk_share.verify_decrypt_batched(ciphertext_batch),
-            )
-            for pk_share, sk_share in zip(pk_shares, sk_shares)
-        ]
-        decryption_shares_batch = zip(*decryption_share_batches)
-        for i, decryption_shares in enumerate(decryption_shares_batch):
-            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+        partial_decryption_batches = []
+        for pk_share, sk_share in zip(pk_shares, sk_shares):
+            partial_decryption_batch, proof = sk_share.prove_decrypt_batched(ciphertext_batch)
+            pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
+            partial_decryption_batches.append(partial_decryption_batch)
+        partial_decryptions_batch = zip(*partial_decryption_batches)
+        for i, partial_decryptions in enumerate(partial_decryptions_batch):
+            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
             self.assertEqual(plaintext, i)
 
         # invalid decryptions
-        prover = sk_shares[0].prove_decrypt_batched(ciphertext_batch)
-        verifier = pk_shares[1].verify_decrypt_batched(ciphertext_batch)
-        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+        partial_decryption_batch, proof = sk_shares[0].prove_decrypt_batched(ciphertext_batch)
+        self.assertRaises(paillier.InvalidProof, pk_shares[1].verify_decrypt_batched, ciphertext_batch, partial_decryption_batch, proof)
 
         # prepare pre-computations
         for sk_share in sk_shares:
             sk_share.precompute_proofs(1)
 
         # with pre-computations
-        decryption_share_batches = [
-            util.run_protocol(
-                sk_share.prove_decrypt_batched(ciphertext_batch),
-                pk_share.verify_decrypt_batched(ciphertext_batch),
-            )
-            for pk_share, sk_share in zip(pk_shares, sk_shares)
-        ]
-        decryption_shares_batch = zip(*decryption_share_batches)
-        for i, decryption_shares in enumerate(decryption_shares_batch):
-            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, decryption_shares)
+        partial_decryption_batches = []
+        for pk_share, sk_share in zip(pk_shares, sk_shares):
+            partial_decryption_batch, proof = sk_share.prove_decrypt_batched(ciphertext_batch)
+            pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
+            partial_decryption_batches.append(partial_decryption_batch)
+        partial_decryptions_batch = zip(*partial_decryption_batches)
+        for i, partial_decryptions in enumerate(partial_decryptions_batch):
+            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
             self.assertEqual(plaintext, i)
 
         # not enough pre-computations
         for pk_share, sk_share in zip(pk_shares, sk_shares):
-            prover = sk_share.prove_decrypt_batched(ciphertext_batch)
-            verifier = pk_share.verify_decrypt_batched(ciphertext_batch)
-            self.assertRaises(IndexError, util.run_protocol, prover, verifier)
+            self.assertRaises(IndexError, sk_share.prove_decrypt_batched, ciphertext_batch)
 
     def test_private_multiply(self):
         pk, sk = paillier.generate_paillier_keypair(_N_BITS)
         x, y = -2, 42
-        cy = pk.encrypt(y)
+        cy = pk.encrypt(y).raw_value
 
         # valid multiplication
-        cx, cz = util.run_protocol(
-            pk.prove_private_multiply(x, cy),
-            pk.verify_private_multiply(cy),
-        )
+        cx, cz, proof = pk.prove_private_multiply(x, cy)
+        pk.verify_private_multiply(cx, cy, cz, proof)
         self.assertEqual(sk.decrypt(cx), x)
         self.assertEqual(sk.decrypt(cz), x*y)
 
         # invalid multiplication
-        prover = pk.prove_private_multiply(x, cy + 1)
-        verifier = pk.verify_private_multiply(cy)
-        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+        fake_cy = pk.encrypt(y + 1).raw_value
+        cx, cz, proof = pk.prove_private_multiply(x, fake_cy)
+        self.assertRaises(paillier.InvalidProof, pk.verify_private_multiply, cx, cy, cz, proof)
 
         # prepare pre-computations
         pk.precompute_proofs([x, x+1])
 
         # with pre-computations
-        cx, cz = util.run_protocol(
-            pk.prove_private_multiply(x, cy),
-            pk.verify_private_multiply(cy),
-        )
+        cx, cz, proof = pk.prove_private_multiply(x, cy)
+        pk.verify_private_multiply(cx, cy, cz, proof)
         self.assertEqual(sk.decrypt(cx), x)
         self.assertEqual(sk.decrypt(cz), x*y)
 
         # invalid pre-computations
-        prover = pk.prove_private_multiply(x, cy)
-        verifier = pk.verify_private_multiply(cy)
-        self.assertRaises(ValueError, util.run_protocol, prover, verifier)
+        self.assertRaises(ValueError, pk.prove_private_multiply, x, cy)
 
         # no enough pre-computations
-        prover = pk.prove_private_multiply(x, cy)
-        verifier = pk.verify_private_multiply(cy)
-        self.assertRaises(IndexError, util.run_protocol, prover, verifier)
+        self.assertRaises(IndexError, pk.prove_private_multiply, x, cy)
 
     def test_private_multiply_batched(self):
         pk, sk = paillier.generate_paillier_keypair(_N_BITS)
         x, y_list = -2, [42, -10]
-        cy_list = [pk.encrypt(y) for y in y_list]
+        cy_list = [pk.encrypt(y).raw_value for y in y_list]
 
         # valid multiplications
-        cx, cz_list = util.run_protocol(
-            pk.prove_private_multiply_batched(x, cy_list),
-            pk.verify_private_multiply_batched(cy_list),
-        )
+        cx, cz_list, proof = pk.prove_private_multiply_batched(x, cy_list)
+        pk.verify_private_multiply_batched(cx, cy_list, cz_list, proof)
         for y, cz in zip(y_list, cz_list):
             self.assertEqual(sk.decrypt(cx), x)
             self.assertEqual(sk.decrypt(cz), x*y)
 
         # invalid multiplications
         fake_cy_list = [cy + 1 for cy in cy_list]
-        prover = pk.prove_private_multiply_batched(x, fake_cy_list)
-        verifier = pk.verify_private_multiply_batched(cy_list)
-        self.assertRaises(paillier.InvalidProof, util.run_protocol, prover, verifier)
+        cx, cz_list, proof = pk.prove_private_multiply_batched(x, fake_cy_list)
+        self.assertRaises(paillier.InvalidProof, pk.verify_private_multiply_batched, cx, cy_list, cz_list, proof)
 
         # prepare pre-computations
         pk.precompute_proofs([x, x+1])
 
         # with pre-computations
-        cx, cz = util.run_protocol(
-            pk.prove_private_multiply_batched(x, cy_list),
-            pk.verify_private_multiply_batched(cy_list),
-        )
+        cx, cz_list, proof = pk.prove_private_multiply_batched(x, cy_list)
+        pk.verify_private_multiply_batched(cx, cy_list, cz_list, proof)
         for y, cz in zip(y_list, cz_list):
             self.assertEqual(sk.decrypt(cx), x)
             self.assertEqual(sk.decrypt(cz), x*y)
 
         # invalid pre-computations
-        prover = pk.prove_private_multiply_batched(x, cy_list)
-        verifier = pk.verify_private_multiply_batched(cy_list)
-        self.assertRaises(ValueError, util.run_protocol, prover, verifier)
+        self.assertRaises(ValueError, pk.prove_private_multiply_batched, x, cy_list)
 
         # no enough pre-computations
-        prover = pk.prove_private_multiply_batched(x, cy_list)
-        verifier = pk.verify_private_multiply_batched(cy_list)
-        self.assertRaises(IndexError, util.run_protocol, prover, verifier)
+        self.assertRaises(IndexError, pk.prove_private_multiply_batched, x, cy_list)
 
 
 class MajorityJudgmentFixture:

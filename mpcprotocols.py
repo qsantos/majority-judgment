@@ -90,18 +90,16 @@ class SharedMockMPCProtocols(MockMPCProtocols):
         self.n_decrypt += len(ciphertext_batch)
         self.d_decrypt += 1
 
-        decryption_share_batches = [
-            util.run_protocol(
-                sk_share.prove_decrypt_batched(ciphertext_batch),
-                pk_share.verify_decrypt_batched(ciphertext_batch),
-            )
-            for pk_share, sk_share in zip(self.pk_shares, self.sk_shares)
-        ]
+        partial_decryption_batches = []
+        for pk_share, sk_share in zip(self.pk_shares, self.sk_shares):
+            partial_decryption_batch, proof = sk_share.prove_decrypt_batched(ciphertext_batch)
+            pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
+            partial_decryption_batches.append(partial_decryption_batch)
+        partial_decryptions_batch = zip(*partial_decryption_batches)
 
-        decryption_shares_batch = zip(*decryption_share_batches)
         return [
-            paillier.PaillierPublicKeyShare.assemble_decryption_shares(self.pk_shares, decryption_shares)
-            for decryption_shares in decryption_shares_batch
+            paillier.PaillierPublicKeyShare.assemble_decryption_shares(self.pk_shares, partial_decryptions)
+            for partial_decryptions in partial_decryptions_batch
         ]
 
     def random_negate_batched(self, x_batch, y_batch):
@@ -117,18 +115,18 @@ class SharedMockMPCProtocols(MockMPCProtocols):
             encrypting either the same values as the corresponding inputs, or
             their negation
         """
+        assert len(x_batch) == len(y_batch)
         pk = self.pk_shares[0].public_key
-        x_y_batch = zip(x_batch, y_batch)
+        x_batch = [x.raw_value for x in x_batch]
+        y_batch = [y.raw_value for y in y_batch]
 
         for _ in self.pk_shares:
-            x_y_batch = [
-                util.run_protocol(
-                    pk.prove_private_multiply_batched(None, [x, y]),
-                    pk.verify_private_multiply_batched([x, y]),
-                )[1]
-                for x, y in x_y_batch
-            ]
+            for i in range(len(x_batch)):
+                cy_list = x_batch[i], y_batch[i]
+                cx, cz_list, proof = pk.prove_private_multiply_batched(None, cy_list)
+                pk.verify_private_multiply_batched(cx, cy_list, cz_list, proof)
+                x_batch[i], y_batch[i] = cz_list
 
-        x_batch = [x for x, y in x_y_batch]
-        y_batch = [y for x, y in x_y_batch]
+        x_batch = [paillier.PaillierCiphertext(pk, x) for x in x_batch]
+        y_batch = [paillier.PaillierCiphertext(pk, y) for y in y_batch]
         return x_batch, y_batch

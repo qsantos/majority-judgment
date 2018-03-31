@@ -128,26 +128,6 @@ def prod(elements_iterable, modulus=None):
     return product
 
 
-def run_protocol(alice, bob):
-    """Run a protocol
-
-    Arguments:
-        alice (generator): initiator of the protocol (client)
-        bob (generator): second party of the protocol (server)
-
-    Returns:
-        object: the first value *returned* by either generator
-    """
-    try:
-        next(bob)
-        message = next(alice)
-        while True:
-            message = bob.send(message)
-            message = alice.send(message)
-    except StopIteration as e:
-        return e.value
-
-
 def random_numbers_totaling(total, count):
     """Generate random numbers of given sum
 

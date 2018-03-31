@@ -17,12 +17,9 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
         self.server = server
 
     def decrypt_batched(self, ciphertext_batch):
-        # initiate prover
-        prover = self.sk_share.prove_decrypt_batched(ciphertext_batch)
-
-        # run proof protocol with server
-        output = next(prover)
-        self.server.send_json(output)
+        # compute partial decryptions and prove it
+        partial_decryption_batch, proof = self.sk_share.prove_decrypt_batched(ciphertext_batch)
+        self.server.send_json([partial_decryption_batch, proof])
 
         # receive plaintexts
         return self.server.receive_json()
@@ -34,21 +31,11 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
 
         for _ in range(n_rounds):
             x_batch, y_batch = self.server.receive_json()
-            x_batch = [paillier.PaillierCiphertext(pk, x) for x in x_batch]
-            y_batch = [paillier.PaillierCiphertext(pk, y) for y in y_batch]
-
-            # initiate provers
-            prover_batch = [
+            cx_cz_list_proof_batch = [
                 pk.prove_private_multiply_batched(None, [x, y])
                 for x, y in zip(x_batch, y_batch)
             ]
-
-            # run proof protocol with server
-            output_batch = [
-                next(prover)
-                for prover in prover_batch
-            ]
-            self.server.send_json(output_batch)
+            self.server.send_json(cx_cz_list_proof_batch)
 
         # receive final x_batch and y_batch
         x_batch, y_batch = self.server.receive_json()
