@@ -493,7 +493,7 @@ class PaillierSecretKey:
         """Decrypt a ciphertext
 
         Arguments:
-            ciphertext (PaillierCiphertext): the ciphertext to be decrypted
+            ciphertext (int or PaillierCiphertext): the ciphertext
             relative (bool): whether the result should be interpreted as a
                 relative integer (i.e. in [-n/2, n/2] rather than in [0, n])
 
@@ -512,7 +512,8 @@ class PaillierSecretKey:
         """
         pk = self.public_key
         p, q = self.p, self.q
-        ciphertext = ciphertext.raw_value
+        if isinstance(ciphertext, PaillierCiphertext):
+            ciphertext = ciphertext.raw_value
         m_mod_p = pk.L(util.powmod(ciphertext, p-1, p*p), p) * self.hp % p
         m_mod_q = pk.L(util.powmod(ciphertext, q-1, q*q), q) * self.hq % q
         plaintext = util.crt([m_mod_p, m_mod_q], [p, q])

@@ -74,8 +74,10 @@ class MockPaillierPrivateKey:
             result of these operations on the original messages should be
             returned.
         """
-        assert ciphertext.public_key == self.public_key
-        return ciphertext.raw_value
+        if isinstance(ciphertext, MockPaillierCiphertext):
+            assert ciphertext.public_key == self.public_key
+            ciphertext = ciphertext.raw_value
+        return ciphertext
 
 
 class MockPaillierCiphertext:

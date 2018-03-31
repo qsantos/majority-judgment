@@ -26,6 +26,12 @@ class PartiallyHomomorphicSchemeFixture:
         self.assertEqual(sk.decrypt(pk.encrypt(1)), 1)
         self.assertEqual(sk.decrypt(pk.encrypt(12)), 12)
 
+        # same, with raw values
+        self.assertEqual(sk.decrypt(pk.encrypt(-1).raw_value), -1)
+        self.assertEqual(sk.decrypt(pk.encrypt(0).raw_value), 0)
+        self.assertEqual(sk.decrypt(pk.encrypt(1).raw_value), 1)
+        self.assertEqual(sk.decrypt(pk.encrypt(12).raw_value), 12)
+
     def test_additive(self):
         pk, sk = self.generate_keypair(_N_BITS)
         a = pk.encrypt(42)
