@@ -104,7 +104,8 @@ def share_paillier_keypair(pk, sk, n_shares):
 
     # the verification base must generate the quadratic residues; which happens
     # with overwhelming probability for a random square
-    verification_base = random.SystemRandom().randrange(pk.nsquare)**2 % pk.nsquare
+    n2 = pk.nsquare
+    verification_base = random.SystemRandom().randrange(pk.nsquare)**2 % n2
 
     # split the secret exponent into required number of shares
     key_shares = [
@@ -559,14 +560,15 @@ class PaillierPublicKeyShare:
             generator: the corresponding protocol
         """
         pk = self.public_key
+        n2 = pk.nsquare
 
         # run Schnorr protocol in the Fiat-Shamir heuristic
         t, w = yield
         h = H([self.verification_base, self.verification, t])
 
         # verify proof
-        if util.powmod(self.verification_base, w, pk.nsquare) != \
-                t * util.powmod(self.verification, h, pk.nsquare) % pk.nsquare:
+        if util.powmod(self.verification_base, w, n2) != \
+                t * util.powmod(self.verification, h, n2) % n2:
             raise InvalidProof
 
     def verify_decrypt(self, ciphertext):
@@ -585,6 +587,7 @@ class PaillierPublicKeyShare:
         """
 
         pk = self.public_key
+        n2 = pk.nsquare
 
         # run Chaum-Pedersen protocol in the Fiat-Shamir heuristic
         partial_decryption, t1, t2, w = yield
@@ -595,12 +598,12 @@ class PaillierPublicKeyShare:
 
         # verify proof
         # check that v^s = t_1 * v_i^c
-        if util.powmod(self.verification_base, w, pk.nsquare) != \
-                t1 * util.powmod(self.verification, h, pk.nsquare) % pk.nsquare:
+        if util.powmod(self.verification_base, w, n2) != \
+                t1 * util.powmod(self.verification, h, n2) % n2:
             raise InvalidProof
         # check that (x^2)^s = t_2 * (m^2)^c
-        if util.powmod(ciphertext.raw_value, _CP*_QR*w, pk.nsquare) != \
-                t2 * util.powmod(partial_decryption, _CP*h, pk.nsquare) % pk.nsquare:
+        if util.powmod(ciphertext.raw_value, _CP*_QR*w, n2) != \
+                t2 * util.powmod(partial_decryption, _CP*h, n2) % n2:
             raise InvalidProof
 
         return partial_decryption
@@ -622,6 +625,7 @@ class PaillierPublicKeyShare:
             of this particular ciphertext from the other secret key shares
         """
         pk = self.public_key
+        n2 = pk.nsquare
 
         # run protocol in the Fiat-Shamir heuristic
         partial_decryption_batch, t1, t2, w = yield
@@ -634,11 +638,11 @@ class PaillierPublicKeyShare:
 
         # compute combined plaintext and ciphertext for verification
         combined_plaintext = util.prod(
-            util.powmod(plaintext, lambda_, pk.nsquare)
+            util.powmod(plaintext, lambda_, n2)
             for plaintext, lambda_ in zip(partial_decryption_batch, lambda_batch)
         )
         combined_ciphertext = util.prod(
-            util.powmod(ciphertext.raw_value, lambda_, pk.nsquare)
+            util.powmod(ciphertext.raw_value, lambda_, n2)
             for ciphertext, lambda_ in zip(ciphertext_batch, lambda_batch)
         )
         h = H([
@@ -648,12 +652,12 @@ class PaillierPublicKeyShare:
 
         # verify proof
         # check that v^s = t_1 * v_i^c
-        if util.powmod(self.verification_base, w, pk.nsquare) != \
-                t1 * util.powmod(self.verification, h, pk.nsquare) % pk.nsquare:
+        if util.powmod(self.verification_base, w, n2) != \
+                t1 * util.powmod(self.verification, h, n2) % n2:
             raise InvalidProof
         # check that (x^2)^s = t_2 * (m^2)^c
-        if util.powmod(combined_ciphertext, _CP*_QR*w, pk.nsquare) != \
-                t2 * util.powmod(combined_plaintext, _CP*h, pk.nsquare) % pk.nsquare:
+        if util.powmod(combined_ciphertext, _CP*_QR*w, n2) != \
+                t2 * util.powmod(combined_plaintext, _CP*h, n2) % n2:
             raise InvalidProof
 
         return partial_decryption_batch
@@ -708,10 +712,11 @@ class PaillierSecretKeyShare:
             public_key (PaillierPublicKey): the non-shared Paillier public key
             key_share (int): parameter s_i in shared Paillier
         """
-        self.public_key = pk = public_key
+        self.public_key = public_key
         self.verification_base = verification_base
         self.key_share = key_share
-        self.verification = util.powmod(verification_base, key_share, pk.nsquare)
+        n2 = public_key.nsquare
+        self.verification = util.powmod(verification_base, key_share, n2)
 
     def precompute_proofs(self, n_uses):
         """Precompute and cache some values used in the proofs
@@ -727,12 +732,13 @@ class PaillierSecretKeyShare:
                 performed (the larger the value, the longer this step takes)
         """
         pk = self.public_key
+        n2 = pk.nsquare
         randoms = [
-            random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
+            random.SystemRandom().randrange(n2 << (2*pk.security_parameter))
             for _ in range(n_uses)
         ]
         self.precomputed_values = [
-            (r, util.powmod(self.verification_base, r, pk.nsquare))
+            (r, util.powmod(self.verification_base, r, n2))
             for r in randoms
         ]
 
@@ -743,14 +749,15 @@ class PaillierSecretKeyShare:
             generator: the corresponding protocol
         """
         pk = self.public_key
+        n2 = pk.nsquare
 
         try:
             # raises IndexError if not enough precomputations were forecast
             r, t = self.precomputed_values.pop()
         except AttributeError:
             # no pre-computations
-            r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
-            t = util.powmod(self.verification_base, r, pk.nsquare)
+            r = random.SystemRandom().randrange(n2 << (2*pk.security_parameter))
+            t = util.powmod(self.verification_base, r, n2)
 
         # run Schnorr protocol in the Fiat-Shamir heuristic
         h = H([self.verification_base, self.verification, t])
@@ -768,7 +775,8 @@ class PaillierSecretKeyShare:
                 secret key share
         """
         pk = self.public_key
-        return util.powmod(ciphertext.raw_value, _QR*self.key_share, pk.nsquare)
+        n2 = pk.nsquare
+        return util.powmod(ciphertext.raw_value, _QR*self.key_share, n2)
 
     def prove_decrypt(self, ciphertext):
         """(Partially) decrypt a ciphertext in a verifiable manner
@@ -780,6 +788,7 @@ class PaillierSecretKeyShare:
             generator: the corresponding protocol
         """
         pk = self.public_key
+        n2 = pk.nsquare
         partial_decryption = self.decrypt(ciphertext)
 
         try:
@@ -787,13 +796,13 @@ class PaillierSecretKeyShare:
             r, t1 = self.precomputed_values.pop()
         except AttributeError:
             # no pre-computations
-            r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
-            t1 = util.powmod(self.verification_base, r, pk.nsquare)
+            r = random.SystemRandom().randrange(n2 << (2*pk.security_parameter))
+            t1 = util.powmod(self.verification_base, r, n2)
 
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
         #   * (partial_decryption**2) = (ciphertext**2)**(2*key_share)
-        t2 = util.powmod(ciphertext.raw_value, _CP*_QR*r, pk.nsquare)
+        t2 = util.powmod(ciphertext.raw_value, _CP*_QR*r, n2)
 
         # run Chaum-Pedersen protocol in the Fiat-Shamir heuristic
         h = H([
@@ -814,6 +823,7 @@ class PaillierSecretKeyShare:
             generator: the corresponding protocol
         """
         pk = self.public_key
+        n2 = pk.nsquare
         partial_decryption_batch = [
             self.decrypt(ciphertext)
             for ciphertext in ciphertext_batch
@@ -829,11 +839,11 @@ class PaillierSecretKeyShare:
             for ciphertext, partial_decryption in zip(ciphertext_batch, partial_decryption_batch)
         ]
         combined_plaintext = util.prod(
-            util.powmod(plaintext, lambda_, pk.nsquare)
+            util.powmod(plaintext, lambda_, n2)
             for plaintext, lambda_ in zip(partial_decryption_batch, lambda_batch)
         )
         combined_ciphertext = util.prod(
-            util.powmod(ciphertext.raw_value, lambda_, pk.nsquare)
+            util.powmod(ciphertext.raw_value, lambda_, n2)
             for ciphertext, lambda_ in zip(ciphertext_batch, lambda_batch)
         )
 
@@ -842,13 +852,13 @@ class PaillierSecretKeyShare:
             r, t1 = self.precomputed_values.pop()
         except AttributeError:
             # no pre-computations
-            r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
-            t1 = util.powmod(self.verification_base, r, pk.nsquare)
+            r = random.SystemRandom().randrange(n2 << (2*pk.security_parameter))
+            t1 = util.powmod(self.verification_base, r, n2)
 
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
         #   * combined_plaintext**2 = (combined_ciphertext**2)**(2*key_share)
-        t2 = util.powmod(combined_ciphertext, _CP*_QR*r, pk.nsquare)
+        t2 = util.powmod(combined_ciphertext, _CP*_QR*r, n2)
         h = H([
             combined_ciphertext, combined_plaintext, t1,
             self.verification_base, self.verification, t2,
