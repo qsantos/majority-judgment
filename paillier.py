@@ -25,6 +25,11 @@ _QR = 2
 # equation when to ensure to be working in Q_n; this protects the verifier
 _CP = 2
 
+# Notations for proofs
+#   * t, t1, t2: commitment
+#   * h: challenge (= H(…))
+#   * w: witness (exponent applied to the generator)
+
 
 def H(query, n=2**80):
     """Simulation of a random oracle by a hash function
@@ -301,11 +306,11 @@ class PaillierPublicKey:
         cyu, ryu = self.raw_multiply(cy, u)  # ⟦yu⟧
 
         # run protocol in the Fiat-Shamir heuristic
-        challenge = H([cx, cy, cz, cu, cyu])
-        rs = ru * util.powmod(rx, challenge, self.n) % self.n
-        rys = ryu * util.powmod(rz, challenge, self.n) % self.n
-        proof = u + x*challenge
-        yield cx, cz, cu, cyu, proof, rs, rys
+        h = H([cx, cy, cz, cu, cyu])
+        rs = ru * util.powmod(rx, h, self.n) % self.n
+        rys = ryu * util.powmod(rz, h, self.n) % self.n
+        w = u + x*h
+        yield cx, cz, cu, cyu, w, rs, rys
 
     def verify_private_multiply(self, cy):
         """Check the proof of multiplication of a ciphertext with a plaintext
@@ -323,17 +328,17 @@ class PaillierPublicKey:
         cy = cy.raw_value
 
         # run protocol in the Fiat-Shamir heuristic
-        cx, cz, cu, cyu, proof, rs, rys = yield
-        challenge = H([cx, cy, cz, cu, cyu])
+        cx, cz, cu, cyu, w, rs, rys = yield
+        h = H([cx, cy, cz, cu, cyu])
 
         # verify proofs
-        cs, _ = self.raw_multiply(self.g, proof, rs)  # ⟦s⟧ = ⟦u + xe⟧
-        cys, _ = self.raw_multiply(cy, proof, rys)  # ⟦ys⟧ = ⟦y(u + xe)⟧
+        cs, _ = self.raw_multiply(self.g, w, rs)  # ⟦s⟧ = ⟦u + xe⟧
+        cys, _ = self.raw_multiply(cy, w, rys)  # ⟦ys⟧ = ⟦y(u + xe)⟧
         # ⟦u⟧ * ⟦x⟧**e = ⟦u + xe⟧ = ⟦s⟧
-        if cs != cu * util.powmod(cx, challenge, n2) % n2:
+        if cs != cu * util.powmod(cx, h, n2) % n2:
             raise InvalidProof
         # ⟦yu⟧ * ⟦z⟧**e = ⟦yu + yxe⟧ = ⟦ys⟧
-        if cys != cyu * util.powmod(cz, challenge, n2) % n2:
+        if cys != cyu * util.powmod(cz, h, n2) % n2:
             raise InvalidProof
 
         return PaillierCiphertext(self, cx), PaillierCiphertext(self, cz)
@@ -392,11 +397,11 @@ class PaillierPublicKey:
         cyu, ryu = self.raw_multiply(cy, u)  # ⟦yu⟧
 
         # run private multiply protocol in the Fiat-Shamir heuristic
-        challenge = H([cx, cy, cz, cu, cyu])
-        rs = ru * util.powmod(rx, challenge, self.n) % self.n
-        rys = ryu * util.powmod(rz, challenge, self.n) % self.n
-        proof = u + x*challenge
-        yield cx, cz_list, cu, cyu, proof, rs, rys
+        h = H([cx, cy, cz, cu, cyu])
+        rs = ru * util.powmod(rx, h, self.n) % self.n
+        rys = ryu * util.powmod(rz, h, self.n) % self.n
+        w = u + x*h
+        yield cx, cz_list, cu, cyu, w, rs, rys
 
     def verify_private_multiply_batched(self, cy_list):
         """Check the proof of multiplication of a ciphertext with a plaintext
@@ -414,7 +419,7 @@ class PaillierPublicKey:
         cy_list = [cy.raw_value for cy in cy_list]
 
         # generate random λ_i *after* ciphertexts have been provided
-        cx, cz_list, cu, cyu, proof, rs, rys = yield
+        cx, cz_list, cu, cyu, w, rs, rys = yield
         lambda_list = [H([cx, cy, cz]) for cy, cz in zip(cy_list, cz_list)]
 
         # compute combined ciphertexts
@@ -428,16 +433,16 @@ class PaillierPublicKey:
         )
 
         # run private multiply protocol in the Fiat-Shamir heuristic
-        challenge = H([cx, cy, cz, cu, cyu])
+        h = H([cx, cy, cz, cu, cyu])
 
         # verify proofs
-        cs, _ = self.raw_multiply(self.g, proof, rs)  # ⟦s⟧ = ⟦u + xe⟧
-        cys, _ = self.raw_multiply(cy, proof, rys)  # ⟦ys⟧ = ⟦y(u + xe)⟧
+        cs, _ = self.raw_multiply(self.g, w, rs)  # ⟦s⟧ = ⟦u + xe⟧
+        cys, _ = self.raw_multiply(cy, w, rys)  # ⟦ys⟧ = ⟦y(u + xe)⟧
         # ⟦u⟧ * ⟦x⟧**e = ⟦u + xe⟧ = ⟦s⟧
-        if cs != cu * util.powmod(cx, challenge, n2) % n2:
+        if cs != cu * util.powmod(cx, h, n2) % n2:
             raise InvalidProof
         # ⟦yu⟧ * ⟦z⟧**e = ⟦yu + yxe⟧ = ⟦ys⟧
-        if cys != cyu * util.powmod(cz, challenge, n2) % n2:
+        if cys != cyu * util.powmod(cz, h, n2) % n2:
             raise InvalidProof
 
         cz_list = [PaillierCiphertext(self, cz) for cz in cz_list]
@@ -556,12 +561,12 @@ class PaillierPublicKeyShare:
         pk = self.public_key
 
         # run Schnorr protocol in the Fiat-Shamir heuristic
-        commitment, proof = yield
-        challenge = H([self.verification_base, self.verification, commitment])
+        t, w = yield
+        h = H([self.verification_base, self.verification, t])
 
         # verify proof
-        if util.powmod(self.verification_base, proof, pk.nsquare) != \
-                commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
+        if util.powmod(self.verification_base, w, pk.nsquare) != \
+                t * util.powmod(self.verification, h, pk.nsquare) % pk.nsquare:
             raise InvalidProof
 
     def verify_decrypt(self, ciphertext):
@@ -582,20 +587,20 @@ class PaillierPublicKeyShare:
         pk = self.public_key
 
         # run Chaum-Pedersen protocol in the Fiat-Shamir heuristic
-        partial_decryption, left_commitment, right_commitment, proof = yield
-        challenge = H([
-            ciphertext.raw_value, partial_decryption, left_commitment,
-            self.verification_base, self.verification, right_commitment,
+        partial_decryption, t1, t2, w = yield
+        h = H([
+            ciphertext.raw_value, partial_decryption, t1,
+            self.verification_base, self.verification, t2,
         ])
 
         # verify proof
         # check that v^s = t_1 * v_i^c
-        if util.powmod(self.verification_base, proof, pk.nsquare) != \
-                left_commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
+        if util.powmod(self.verification_base, w, pk.nsquare) != \
+                t1 * util.powmod(self.verification, h, pk.nsquare) % pk.nsquare:
             raise InvalidProof
         # check that (x^2)^s = t_2 * (m^2)^c
-        if util.powmod(ciphertext.raw_value, _CP*_QR*proof, pk.nsquare) != \
-                right_commitment * util.powmod(partial_decryption, _CP*challenge, pk.nsquare) % pk.nsquare:
+        if util.powmod(ciphertext.raw_value, _CP*_QR*w, pk.nsquare) != \
+                t2 * util.powmod(partial_decryption, _CP*h, pk.nsquare) % pk.nsquare:
             raise InvalidProof
 
         return partial_decryption
@@ -619,7 +624,7 @@ class PaillierPublicKeyShare:
         pk = self.public_key
 
         # run protocol in the Fiat-Shamir heuristic
-        partial_decryption_batch, left_commitment, right_commitment, proof = yield
+        partial_decryption_batch, t1, t2, w = yield
 
         # generate random λ_i *after* decryption shares have been provided
         lambda_batch = [
@@ -636,19 +641,19 @@ class PaillierPublicKeyShare:
             util.powmod(ciphertext.raw_value, lambda_, pk.nsquare)
             for ciphertext, lambda_ in zip(ciphertext_batch, lambda_batch)
         )
-        challenge = H([
-            combined_ciphertext, combined_plaintext, left_commitment,
-            self.verification_base, self.verification, right_commitment,
+        h = H([
+            combined_ciphertext, combined_plaintext, t1,
+            self.verification_base, self.verification, t2,
         ])
 
         # verify proof
         # check that v^s = t_1 * v_i^c
-        if util.powmod(self.verification_base, proof, pk.nsquare) != \
-                left_commitment * util.powmod(self.verification, challenge, pk.nsquare) % pk.nsquare:
+        if util.powmod(self.verification_base, w, pk.nsquare) != \
+                t1 * util.powmod(self.verification, h, pk.nsquare) % pk.nsquare:
             raise InvalidProof
         # check that (x^2)^s = t_2 * (m^2)^c
-        if util.powmod(combined_ciphertext, _CP*_QR*proof, pk.nsquare) != \
-                right_commitment * util.powmod(combined_plaintext, _CP*challenge, pk.nsquare) % pk.nsquare:
+        if util.powmod(combined_ciphertext, _CP*_QR*w, pk.nsquare) != \
+                t2 * util.powmod(combined_plaintext, _CP*h, pk.nsquare) % pk.nsquare:
             raise InvalidProof
 
         return partial_decryption_batch
@@ -741,16 +746,16 @@ class PaillierSecretKeyShare:
 
         try:
             # raises IndexError if not enough precomputations were forecast
-            r, commitment = self.precomputed_values.pop()
+            r, t = self.precomputed_values.pop()
         except AttributeError:
             # no pre-computations
             r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
-            commitment = util.powmod(self.verification_base, r, pk.nsquare)
+            t = util.powmod(self.verification_base, r, pk.nsquare)
 
         # run Schnorr protocol in the Fiat-Shamir heuristic
-        challenge = H([self.verification_base, self.verification, commitment])
-        proof = r + challenge * self.key_share
-        yield commitment, proof
+        h = H([self.verification_base, self.verification, t])
+        w = r + h * self.key_share
+        yield t, w
 
     def decrypt(self, ciphertext):
         """(Partially) decrypt a ciphertext
@@ -779,24 +784,24 @@ class PaillierSecretKeyShare:
 
         try:
             # raises IndexError if not enough precomputations were forecast
-            r, left_commitment = self.precomputed_values.pop()
+            r, t1 = self.precomputed_values.pop()
         except AttributeError:
             # no pre-computations
             r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
-            left_commitment = util.powmod(self.verification_base, r, pk.nsquare)
+            t1 = util.powmod(self.verification_base, r, pk.nsquare)
 
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
         #   * (partial_decryption**2) = (ciphertext**2)**(2*key_share)
-        right_commitment = util.powmod(ciphertext.raw_value, _CP*_QR*r, pk.nsquare)
+        t2 = util.powmod(ciphertext.raw_value, _CP*_QR*r, pk.nsquare)
 
         # run Chaum-Pedersen protocol in the Fiat-Shamir heuristic
-        challenge = H([
-            ciphertext.raw_value, partial_decryption, left_commitment,
-            self.verification_base, self.verification, right_commitment,
+        h = H([
+            ciphertext.raw_value, partial_decryption, t1,
+            self.verification_base, self.verification, t2,
         ])
-        proof = r + challenge * self.key_share
-        yield partial_decryption, left_commitment, right_commitment, proof
+        w = r + h * self.key_share
+        yield partial_decryption, t1, t2, w
 
     def prove_decrypt_batched(self, ciphertext_batch):
         """Batched version of `prove_decrypt()`
@@ -834,22 +839,22 @@ class PaillierSecretKeyShare:
 
         try:
             # raises IndexError if not enough precomputations were forecast
-            r, left_commitment = self.precomputed_values.pop()
+            r, t1 = self.precomputed_values.pop()
         except AttributeError:
             # no pre-computations
             r = random.SystemRandom().randrange(pk.nsquare << (2*pk.security_parameter))
-            left_commitment = util.powmod(self.verification_base, r, pk.nsquare)
+            t1 = util.powmod(self.verification_base, r, pk.nsquare)
 
         # prove knowledge of key_share such that:
         #   * v_i = v**key_share
         #   * combined_plaintext**2 = (combined_ciphertext**2)**(2*key_share)
-        right_commitment = util.powmod(combined_ciphertext, _CP*_QR*r, pk.nsquare)
-        challenge = H([
-            combined_ciphertext, combined_plaintext, left_commitment,
-            self.verification_base, self.verification, right_commitment,
+        t2 = util.powmod(combined_ciphertext, _CP*_QR*r, pk.nsquare)
+        h = H([
+            combined_ciphertext, combined_plaintext, t1,
+            self.verification_base, self.verification, t2,
         ])
-        proof = r + challenge * self.key_share
-        yield partial_decryption_batch, left_commitment, right_commitment, proof
+        w = r + h * self.key_share
+        yield partial_decryption_batch, t1, t2, w
 
 
 class PaillierCiphertext:
