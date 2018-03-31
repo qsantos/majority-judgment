@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import argparse
 import datetime
 
 import util
@@ -137,15 +138,18 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
 
 
 def main():
-    n_choices = 5
-    n_candidates = 3
-    n_bits = 27
-    n_parties = 3
+    parser = argparse.ArgumentParser()
+    parser.description = 'Run an MPC coordinator for majority judgment'
+    parser.add_argument('parties', type=int)
+    parser.add_argument('--choices', '-n', default=5, type=int)
+    parser.add_argument('--candidates', '-m', default=3, type=int)
+    parser.add_argument('--bits', '-l', default=11, type=int)
+    args = parser.parse_args()
 
     # generate the ballots
     clear_A = [
-        util.random_numbers_totaling(2**n_bits // 2 - 1, n_choices)
-        for _ in range(n_candidates)
+        util.random_numbers_totaling(2**args.bits // 2 - 1, args.choices)
+        for _ in range(args.candidates)
     ]
 
     # wait for all parties to connect
@@ -153,7 +157,7 @@ def main():
     listener = network.MessageSocket()
     listener.listen(('', 4242))
     clients = []
-    for _ in range(n_parties):
+    for _ in range(args.parties):
         client, addr = listener.accept()
         clients.append(client)
 
@@ -174,19 +178,19 @@ def main():
         print('Keys loaded')
 
     # share keypair
-    pk_shares, sk_shares = paillier.share_paillier_keypair(pk, sk, n_parties)
+    pk_shares, sk_shares = paillier.share_paillier_keypair(pk, sk, args.parties)
 
     # setup
     protocols = SharedPaillierServerProtocols(pk_shares, clients)
-    election = majorityjudgment.MPCMajorityJudgment(pk, protocols, n_choices, n_candidates, n_bits)
+    election = majorityjudgment.MPCMajorityJudgment(pk, protocols, args.choices, args.candidates, args.bits)
     election.precompute_randoms()
 
     # broadcast setup to parties
     print('Distributing keys')
     setup = {
-        'n_choices': n_choices,
-        'n_candidates': n_candidates,
-        'n_bits': n_bits,
+        'n_choices': args.choices,
+        'n_candidates': args.candidates,
+        'n_bits': args.bits,
         'n': pk.n,
         'g': pk.g,
         'verification_base': sk_shares[0].verification_base,
