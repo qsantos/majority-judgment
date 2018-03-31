@@ -24,13 +24,9 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
             for pk_share in self.pk_shares
         ]
 
-        # run proof protocol (TODO: non fixed number of rounds)
+        # run proof protocol
         for verifier in verifiers:
             next(verifier)
-        for verifier, client in zip(verifiers, self.clients):
-            client.send_json(verifier.send(client.receive_json()))
-        for verifier, client in zip(verifiers, self.clients):
-            client.send_json(verifier.send(client.receive_json()))
         results = []
         for verifier, client in zip(verifiers, self.clients):
             try:
@@ -93,26 +89,7 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
 
             assert len(verifier_subbatches) == len(self.clients)
 
-            # run proof protocol (TODO: non fixed number of rounds)
-            # round 1
-            for client, verifier_subbatch in zip(self.clients, verifier_subbatches):
-                input_batch = client.receive_json()
-                output_batch = [
-                    verifier.send(input)
-                    for verifier, input in zip(verifier_subbatch, input_batch)
-                ]
-                client.send_json(output_batch)
-
-            # round 2
-            for client, verifier_subbatch in zip(self.clients, verifier_subbatches):
-                input_batch = client.receive_json()
-                output_batch = [
-                    verifier.send(input)
-                    for verifier, input in zip(verifier_subbatch, input_batch)
-                ]
-                client.send_json(output_batch)
-
-            # round 3
+            # run proof protocol
             for i, (client, verifier_subbatch) in enumerate(zip(self.clients, verifier_subbatches)):
                 input_batch = client.receive_json()
                 for j, (verifier, input) in enumerate(zip(verifier_subbatch, input_batch)):

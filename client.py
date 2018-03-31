@@ -22,15 +22,6 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
 
         # run proof protocol with server
         output = next(prover)
-        # round 1
-        self.server.send_json(output)
-        input = self.server.receive_json()
-        output = prover.send(input)
-        # round 2
-        self.server.send_json(output)
-        input = self.server.receive_json()
-        output = prover.send(input)
-        # round 3
         self.server.send_json(output)
 
         # receive plaintexts
@@ -57,21 +48,6 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
                 next(prover)
                 for prover in prover_batch
             ]
-            # round 1
-            self.server.send_json(output_batch)
-            input_batch = self.server.receive_json()
-            output_batch = [
-                prover.send(input)
-                for prover, input in zip(prover_batch, input_batch)
-            ]
-            # round 2
-            self.server.send_json(output_batch)
-            input_batch = self.server.receive_json()
-            output_batch = [
-                prover.send(input)
-                for prover, input in zip(prover_batch, input_batch)
-            ]
-            # round 3
             self.server.send_json(output_batch)
 
         # receive final x_batch and y_batch
