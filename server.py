@@ -12,6 +12,75 @@ import majorityjudgment
 _BUFFER_SIZE = 2**20
 
 
+class HonestSharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
+    def __init__(self, pk_shares, clients):
+        self.pk_shares = pk_shares
+        self.clients = clients
+
+    def decrypt_batched(self, ciphertext_batch):
+        # collect partial decryptions
+        partial_decryption_batches = [
+            client.receive_json()
+            for client in self.clients
+        ]
+
+        # assemble plaintexts
+        partial_decryptions_batch = zip(*partial_decryption_batches)
+        plaintext_batch = [
+            paillier.PaillierPublicKeyShare.assemble_decryption_shares(self.pk_shares, partial_decryptions)
+            for partial_decryptions in partial_decryptions_batch
+        ]
+
+        # broadcast plaintexts
+        for client in self.clients:
+            client.send_json(plaintext_batch)
+
+        # done
+        return plaintext_batch
+
+    def random_negate_batched(self, x_batch, y_batch):
+        pk = self.pk_shares[0].public_key
+
+        x_batch = [x.raw_value for x in x_batch]
+        y_batch = [y.raw_value for y in y_batch]
+
+        assert len(x_batch) == len(y_batch)
+
+        stride = (len(x_batch)-1) // len(self.pk_shares) + 1
+        n_rounds = (len(x_batch)-1) // stride + 1
+
+        for client in self.clients:
+            client.send_json(n_rounds)
+
+        for offset in range(0, len(x_batch), stride):
+            # split into subbatches for pipelining
+            for i, client in enumerate(self.clients):
+                start = offset+stride*i
+                stop = offset+stride*(i+1)
+                x_subbatch = list(util.slice_warp(x_batch, start, stop))
+                y_subbatch = list(util.slice_warp(y_batch, start, stop))
+
+                # transmit x_batch and y_batch to next client
+                client.send_json([x_subbatch, y_subbatch])
+
+            # collect randomly negated values and verify proofs
+            for i, client in enumerate(self.clients):
+                x_subbatch, y_subbatch = client.receive_json()
+                for j, (x, y) in enumerate(zip(x_subbatch, y_subbatch)):
+                    # update x_batch and y_batch
+                    index = (offset+stride*i+j) % len(x_batch)
+                    x_batch[index], y_batch[index] = x, y
+
+        # broadcast final value of x_batch and y_batch
+        for client in self.clients:
+            client.send_json([x_batch, y_batch])
+
+        # done
+        x_batch = [paillier.PaillierCiphertext(pk, x) for x in x_batch]
+        y_batch = [paillier.PaillierCiphertext(pk, y) for y in y_batch]
+        return x_batch, y_batch
+
+
 class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
     def __init__(self, pk_shares, clients):
         self.pk_shares = pk_shares
@@ -94,6 +163,7 @@ def main():
     parser.add_argument('--choices', '-n', default=5, type=int)
     parser.add_argument('--candidates', '-m', default=3, type=int)
     parser.add_argument('--bits', '-l', default=11, type=int)
+    parser.add_argument('--honest', action='store_true')
     args = parser.parse_args()
 
     # generate the ballots
@@ -131,7 +201,10 @@ def main():
     pk_shares, sk_shares = paillier.share_paillier_keypair(pk, sk, args.parties)
 
     # setup
-    protocols = SharedPaillierServerProtocols(pk_shares, clients)
+    if args.honest:
+        protocols = HonestSharedPaillierServerProtocols(pk_shares, clients)
+    else:
+        protocols = SharedPaillierServerProtocols(pk_shares, clients)
     election = majorityjudgment.MPCMajorityJudgment(pk, protocols, args.choices, args.candidates, args.bits)
     election.precompute_randoms()
 
