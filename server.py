@@ -191,12 +191,11 @@ def main():
 
     # wait for all parties to connect
     print('Waiting for clients to connect')
-    listener = network.MessageSocketListener(('', 4242))
-    clients = []
-    for _ in range(args.parties):
-        client, addr = listener.accept()
-        clients.append(client)
-    listener.close()
+    with network.MessageSocketListener(('', 4242)) as listener:
+        clients = []
+        for _ in range(args.parties):
+            client, addr = listener.accept()
+            clients.append(client)
 
     # load cached keys or generate new ones
     try:

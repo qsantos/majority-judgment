@@ -11,6 +11,13 @@ class MessageSocket:
         self._socket = _socket
         self.buffer = b''
 
+    def __enter__(self):
+        self._socket.__enter__()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self._socket.__exit__(type, value, traceback)
+
     def close(self):
         self._socket.close()
 
@@ -51,6 +58,13 @@ class MessageSocketListener:
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._socket.bind(address)
         self._socket.listen()
+
+    def __enter__(self):
+        self._socket.__enter__()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self._socket.__exit__(type, value, traceback)
 
     def close(self):
         self._socket.close()
