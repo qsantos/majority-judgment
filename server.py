@@ -196,6 +196,7 @@ def main():
     for _ in range(args.parties):
         client, addr = listener.accept()
         clients.append(client)
+    listener.close()
 
     # load cached keys or generate new ones
     try:

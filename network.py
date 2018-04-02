@@ -11,6 +11,9 @@ class MessageSocket:
         self._socket = _socket
         self.buffer = b''
 
+    def close(self):
+        self._socket.close()
+
     def connect(self, address):
         self._socket.connect(address)
 
@@ -48,6 +51,9 @@ class MessageSocketListener:
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._socket.bind(address)
         self._socket.listen()
+
+    def close(self):
+        self._socket.close()
 
     def accept(self):
         client, addr = self._socket.accept()
