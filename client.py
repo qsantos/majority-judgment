@@ -31,7 +31,6 @@ class HonestSharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
         pk = self.sk_share.public_key
 
         n_rounds = self.server.receive_json()
-
         for _ in range(n_rounds):
             x_batch, y_batch = self.server.receive_json()
             for i in range(len(x_batch)):
@@ -64,7 +63,6 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
         pk = self.sk_share.public_key
 
         n_rounds = self.server.receive_json()
-
         for _ in range(n_rounds):
             x_batch, y_batch = self.server.receive_json()
             cx_cz_list_proof_batch = [

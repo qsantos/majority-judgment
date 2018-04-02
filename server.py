@@ -2,6 +2,7 @@
 import json
 import argparse
 import datetime
+import itertools
 
 import util
 import network
@@ -46,30 +47,37 @@ class HonestSharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
 
         assert len(x_batch) == len(y_batch)
 
-        stride = (len(x_batch)-1) // len(self.pk_shares) + 1
-        n_rounds = (len(x_batch)-1) // stride + 1
-
+        n_rounds = len(self.clients)
         for client in self.clients:
             client.send_json(n_rounds)
 
-        for offset in range(0, len(x_batch), stride):
-            # split into subbatches for pipelining
-            for i, client in enumerate(self.clients):
-                start = offset+stride*i
-                stop = offset+stride*(i+1)
-                x_subbatch = list(util.slice_warp(x_batch, start, stop))
-                y_subbatch = list(util.slice_warp(y_batch, start, stop))
+        # split into subbatches for pipelining
+        subbatch_len = (len(x_batch)-1) // n_rounds + 1
+        x_subbatches = [
+            x_batch[subbatch_len*i:subbatch_len*(i+1)]
+            for i in range(n_rounds)
+        ]
+        y_subbatches = [
+            y_batch[subbatch_len*i:subbatch_len*(i+1)]
+            for i in range(n_rounds)
+        ]
 
-                # transmit x_batch and y_batch to next client
+        for round in range(n_rounds):
+            # transmit x_subbatch and y_subbatch to clients
+            for i, client in enumerate(self.clients):
+                x_subbatch = x_subbatches[(i + round) % n_rounds]
+                y_subbatch = y_subbatches[(i + round) % n_rounds]
                 client.send_json([x_subbatch, y_subbatch])
 
             # collect randomly negated values and verify proofs
             for i, client in enumerate(self.clients):
                 x_subbatch, y_subbatch = client.receive_json()
-                for j, (x, y) in enumerate(zip(x_subbatch, y_subbatch)):
-                    # update x_batch and y_batch
-                    index = (offset+stride*i+j) % len(x_batch)
-                    x_batch[index], y_batch[index] = x, y
+                x_subbatches[(i + round) % n_rounds] = x_subbatch
+                y_subbatches[(i + round) % n_rounds] = y_subbatch
+
+        # join back subbatches
+        x_batch = list(itertools.chain(*x_subbatches))
+        y_batch = list(itertools.chain(*y_subbatches))
 
         # broadcast final value of x_batch and y_batch
         for client in self.clients:
@@ -116,35 +124,44 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
 
         assert len(x_batch) == len(y_batch)
 
-        stride = (len(x_batch)-1) // len(self.pk_shares) + 1
-        n_rounds = (len(x_batch)-1) // stride + 1
-
+        n_rounds = len(self.pk_shares)
         for client in self.clients:
             client.send_json(n_rounds)
 
-        for offset in range(0, len(x_batch), stride):
-            # split into subbatches for pipelining
-            cy_list_batches = []
-            for i, client in enumerate(self.clients):
-                start = offset+stride*i
-                stop = offset+stride*(i+1)
-                x_subbatch = list(util.slice_warp(x_batch, start, stop))
-                y_subbatch = list(util.slice_warp(y_batch, start, stop))
+        # split into subbatches for pipelining
+        subbatch_len = (len(x_batch)-1) // n_rounds + 1
+        x_subbatches = [
+            x_batch[subbatch_len*i:subbatch_len*(i+1)]
+            for i in range(n_rounds)
+        ]
+        y_subbatches = [
+            y_batch[subbatch_len*i:subbatch_len*(i+1)]
+            for i in range(n_rounds)
+        ]
 
-                # transmit x_batch and y_batch to next client
+        for round in range(n_rounds):
+            # transmit x_subbatch and y_subbatch to clients
+            for i, client in enumerate(self.clients):
+                x_subbatch = x_subbatches[(i + round) % n_rounds]
+                y_subbatch = y_subbatches[(i + round) % n_rounds]
                 client.send_json([x_subbatch, y_subbatch])
-                cy_list_batch = list(zip(x_subbatch, y_subbatch))
-                cy_list_batches.append(cy_list_batch)
 
             # collect randomly negated values and verify proofs
-            for i, (client, cy_list_batch) in enumerate(zip(self.clients, cy_list_batches)):
+            for i, client in enumerate(self.clients):
+                x_subbatch = x_subbatches[(i + round) % n_rounds]
+                y_subbatch = y_subbatches[(i + round) % n_rounds]
                 cx_cz_list_proof_batch = client.receive_json()
-                for j, (cy_list, (cx, cz_list, proof)) in enumerate(zip(cy_list_batch, cx_cz_list_proof_batch)):
+                for j, (x, y, (cx, cz_list, proof)) in enumerate(zip(x_subbatch, y_subbatch, cx_cz_list_proof_batch)):
+                    cy_list = [x, y]
+                    x, y = cz_list
                     pk.verify_private_multiply_batched(cx, cy_list, cz_list, proof)
+                    # update x_subbatch and y_subbatch
+                    x_subbatch[j] = x
+                    y_subbatch[j] = y
 
-                    # update x_batch and y_batch
-                    index = (offset+stride*i+j) % len(x_batch)
-                    x_batch[index], y_batch[index] = cz_list
+        # join back subbatches
+        x_batch = list(itertools.chain(*x_subbatches))
+        y_batch = list(itertools.chain(*y_subbatches))
 
         # broadcast final value of x_batch and y_batch
         for client in self.clients:
