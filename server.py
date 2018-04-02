@@ -97,21 +97,22 @@ class SharedPaillierServerProtocols(mpcprotocols.MockMPCProtocols):
     def decrypt_batched(self, ciphertext_batch):
         # collect partial decryptions and verify proofs
         partial_decryption_batches = []
-        for pk_share, client in zip(self.pk_shares, self.clients):
+        proofs = []
+        for client in self.clients:
             partial_decryption_batch, proof = client.receive_json()
-            pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
             partial_decryption_batches.append(partial_decryption_batch)
+            proofs.append(proof)
 
-        # assemble plaintexts
+        # broadcast partial decryptions and proofs
+        for client in self.clients:
+            client.send_json([partial_decryption_batches, proofs])
+
+        # assemble plaintexts for local computation
         partial_decryptions_batch = zip(*partial_decryption_batches)
         plaintext_batch = [
             paillier.PaillierPublicKeyShare.assemble_decryption_shares(self.pk_shares, partial_decryptions)
             for partial_decryptions in partial_decryptions_batch
         ]
-
-        # broadcast plaintexts
-        for client in self.clients:
-            client.send_json(plaintext_batch)
 
         # done
         return plaintext_batch

@@ -47,7 +47,8 @@ class HonestSharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
 
 
 class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
-    def __init__(self, sk_share, server):
+    def __init__(self, pk_shares, sk_share, server):
+        self.pk_shares = pk_shares
         self.sk_share = sk_share
         self.server = server
 
@@ -56,8 +57,21 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
         partial_decryption_batch, proof = self.sk_share.prove_decrypt_batched(ciphertext_batch)
         self.server.send_json([partial_decryption_batch, proof])
 
-        # receive plaintexts
-        return self.server.receive_json()
+        # collect all responses
+        partial_decryption_batches, proofs = self.server.receive_json()
+
+        # verify proofs
+        for pk_share, partial_decryption_batch, proof in zip(self.pk_shares, partial_decryption_batches, proofs):
+            pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
+
+        # assemble plaintexts
+        partial_decryptions_batch = zip(*partial_decryption_batches)
+        plaintext_batch = [
+            paillier.PaillierPublicKeyShare.assemble_decryption_shares(self.pk_shares, partial_decryptions)
+            for partial_decryptions in partial_decryptions_batch
+        ]
+
+        return plaintext_batch
 
     def random_negate_batched(self, x_batch, y_batch):
         pk = self.sk_share.public_key
@@ -104,7 +118,7 @@ def main():
     if args.honest:
         protocols = HonestSharedPaillierClientProtocols(sk_share, server)
     else:
-        protocols = SharedPaillierClientProtocols(sk_share, server)
+        protocols = SharedPaillierClientProtocols(pk_shares, sk_share, server)
 
         # pre-computations for proofs
         n_random_negate = (
