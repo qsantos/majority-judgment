@@ -233,7 +233,7 @@ def main():
         'n': pk.n,
         'g': pk.g,
         'verification_base': sk_shares[0].verification_base,
-        'pk_shares': [sk_share.key_share for sk_share in sk_shares],
+        'pk_shares': [pk_share.verification for pk_share in pk_shares],
         'random_bits': [x.raw_value for x in election.random_bits],
         'random_ints': [x.raw_value for x in election.random_ints],
     }
