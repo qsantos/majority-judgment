@@ -87,8 +87,7 @@ def main():
     args = parser.parse_args()
 
     print('Connecting to {}:{}'.format(args.host, args.port))
-    server = network.MessageSocket()
-    server.connect((args.host, args.port))
+    server = network.MessageSocket.connect((args.host, args.port))
     setup = server.receive_json()
 
     n_choices = setup['n_choices']

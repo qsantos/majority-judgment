@@ -11,6 +11,12 @@ class MessageSocket:
         self._socket = _socket
         self.buffer = b''
 
+    @classmethod
+    def connect(cls, address):
+        self = cls()
+        self._socket.connect(address)
+        return self
+
     def __enter__(self):
         self._socket.__enter__()
         return self
@@ -20,9 +26,6 @@ class MessageSocket:
 
     def close(self):
         self._socket.close()
-
-    def connect(self, address):
-        self._socket.connect(address)
 
     def send_data(self, data):
         return self._socket.sendall(data)
