@@ -11,15 +11,6 @@ class MessageSocket:
         self._socket = _socket
         self.buffer = b''
 
-    def listen(self, address):
-        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._socket.bind(address)
-        self._socket.listen()
-
-    def accept(self):
-        client, addr = self._socket.accept()
-        return MessageSocket(client), addr
-
     def connect(self, address):
         self._socket.connect(address)
 
@@ -49,3 +40,15 @@ class MessageSocket:
 
     def receive_json(self):
         return json.loads(self.receive_message().decode())
+
+
+class MessageSocketListener:
+    def __init__(self, address):
+        self._socket = socket.socket()
+        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._socket.bind(address)
+        self._socket.listen()
+
+    def accept(self):
+        client, addr = self._socket.accept()
+        return MessageSocket(client), addr

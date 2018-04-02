@@ -191,8 +191,7 @@ def main():
 
     # wait for all parties to connect
     print('Waiting for clients to connect')
-    listener = network.MessageSocket()
-    listener.listen(('', 4242))
+    listener = network.MessageSocketListener(('', 4242))
     clients = []
     for _ in range(args.parties):
         client, addr = listener.accept()
