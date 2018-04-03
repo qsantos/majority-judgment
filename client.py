@@ -75,15 +75,48 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
 
     def random_negate_batched(self, x_batch, y_batch):
         pk = self.sk_share.public_key
+        assert len(x_batch) == len(y_batch)
 
-        n_rounds = self.server.receive_json()
-        for _ in range(n_rounds):
-            x_batch, y_batch = self.server.receive_json()
-            cx_cz_list_proof_batch = [
+        # get number of rounds for pipelining and client index
+        n_rounds, client_index = self.server.receive_json()
+
+        # split into subbatches for pipelining
+        x_batch = [x.raw_value for x in x_batch]
+        y_batch = [y.raw_value for y in y_batch]
+        subbatch_len = (len(x_batch)-1) // n_rounds + 1
+        x_subbatches = [
+            x_batch[subbatch_len*round:subbatch_len*(round+1)]
+            for round in range(n_rounds)
+        ]
+        y_subbatches = [
+            y_batch[subbatch_len*round:subbatch_len*(round+1)]
+            for round in range(n_rounds)
+        ]
+
+        # pipelined random negates
+        for round in range(n_rounds):
+            # do this client's share of the work
+            # determine current subbatch
+            x_subbatch = x_subbatches[(client_index + round) % n_rounds]
+            y_subbatch = y_subbatches[(client_index + round) % n_rounds]
+            # randomly negate and prove it
+            cx_cz_list_proof_subbatch = [
                 pk.prove_private_multiply_batched(None, [x, y])
-                for x, y in zip(x_batch, y_batch)
+                for x, y in zip(x_subbatch, y_subbatch)
             ]
-            self.server.send_json(cx_cz_list_proof_batch)
+            # send results and proofs
+            self.server.send_json(cx_cz_list_proof_subbatch)
+
+            # collect and verify other clients' work
+            cx_cz_list_proof_subbatches = self.server.receive_json()
+            for other_index, cx_cz_list_proof_batch in enumerate(cx_cz_list_proof_subbatches):
+                x_subbatch = x_subbatches[(other_index + round) % n_rounds]
+                y_subbatch = y_subbatches[(other_index + round) % n_rounds]
+                for j, (x, y, (cx, cz_list, proof)) in enumerate(zip(x_subbatch, y_subbatch, cx_cz_list_proof_batch)):
+                    # update x_subbatch and y_subbatch
+                    x_subbatch[j], y_subbatch[j] = cz_list
+                    # verify proof
+                    pk.verify_private_multiply_batched(cx, [x, y], cz_list, proof)
 
         # receive final x_batch and y_batch
         x_batch, y_batch = self.server.receive_json()
