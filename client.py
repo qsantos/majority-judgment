@@ -62,6 +62,8 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
 
         # verify proofs
         for pk_share, partial_decryption_batch, proof in zip(self.pk_shares, partial_decryption_batches, proofs):
+            if pk_share.verification == self.sk_share.verification:
+                continue  # no point in verifying own's work
             pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
 
         # assemble plaintexts
@@ -116,7 +118,8 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
                     # update x_subbatch and y_subbatch
                     x_subbatch[j], y_subbatch[j] = cz_list
                     # verify proof
-                    pk.verify_private_multiply_batched(cx, [x, y], cz_list, proof)
+                    if other_index != client_index:  # no point in verifying own's work
+                        pk.verify_private_multiply_batched(cx, [x, y], cz_list, proof)
 
         # receive final x_batch and y_batch
         x_batch, y_batch = self.server.receive_json()
