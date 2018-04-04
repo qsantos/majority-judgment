@@ -2,6 +2,7 @@
 import random
 import argparse
 import datetime
+import multiprocessing
 
 import network
 import paillier
@@ -51,6 +52,14 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
         self.pk_shares = pk_shares
         self.sk_share = sk_share
         self.server = server
+        self.pending_verifications = multiprocessing.Queue()
+        self.verification_process = multiprocessing.Process(target=self.verification_worker, daemon=True)
+        self.verification_process.start()
+
+    def verification_worker(self):
+        while True:
+            func, *args = self.pending_verifications.get()
+            func(*args)
 
     def decrypt_batched(self, ciphertext_batch):
         # compute partial decryptions and prove it
@@ -60,11 +69,14 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
         # collect all responses
         partial_decryption_batches, proofs = self.server.receive_json()
 
-        # verify proofs
+        # add proofs to pending verifications
         for pk_share, partial_decryption_batch, proof in zip(self.pk_shares, partial_decryption_batches, proofs):
             if pk_share.verification == self.sk_share.verification:
                 continue  # no point in verifying own's work
-            pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
+            self.pending_verifications.put([
+                pk_share.verify_decrypt_batched, ciphertext_batch,
+                partial_decryption_batch, proof]
+            )
 
         # assemble plaintexts
         partial_decryptions_batch = zip(*partial_decryption_batches)
@@ -119,7 +131,10 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
                     x_subbatch[j], y_subbatch[j] = cz_list
                     # verify proof
                     if other_index != client_index:  # no point in verifying own's work
-                        pk.verify_private_multiply_batched(cx, [x, y], cz_list, proof)
+                        self.pending_verifications.put([
+                            pk.verify_private_multiply_batched, cx, [x, y],
+                            cz_list, proof
+                        ])
 
         # receive final x_batch and y_batch
         x_batch, y_batch = self.server.receive_json()
