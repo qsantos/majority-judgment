@@ -81,8 +81,8 @@ class SharedPaillierClientProtocols(mpcprotocols.MockMPCProtocols):
         # assemble plaintexts
         partial_decryptions_batch = zip(*partial_decryption_batches)
         plaintext_batch = [
-            paillier.PaillierPublicKeyShare.assemble_decryption_shares(self.pk_shares, partial_decryptions)
-            for partial_decryptions in partial_decryptions_batch
+            paillier.PaillierPublicKeyShare.assemble_decryption_shares(ciphertext, self.pk_shares, partial_decryptions)
+            for ciphertext, partial_decryptions in zip(ciphertext_batch, partial_decryptions_batch)
         ]
 
         return plaintext_batch

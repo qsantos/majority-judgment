@@ -138,7 +138,7 @@ class TestPaillierShared(unittest.TestCase):
             sk_share.decrypt(ciphertext)
             for sk_share in sk_shares
         ]
-        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
+        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(ciphertext, pk_shares, partial_decryptions)
         self.assertEqual(plaintext, -42)
 
     def test_proof_of_decryption(self):
@@ -151,7 +151,7 @@ class TestPaillierShared(unittest.TestCase):
             partial_decryption, proof = sk_share.prove_decrypt(ciphertext)
             pk_share.verify_decrypt(ciphertext, partial_decryption, proof)
             partial_decryptions.append(partial_decryption)
-        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
+        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(ciphertext, pk_shares, partial_decryptions)
         self.assertEqual(plaintext, 42)
 
         # invalid decryption
@@ -168,7 +168,7 @@ class TestPaillierShared(unittest.TestCase):
             partial_decryption, proof = sk_share.prove_decrypt(ciphertext)
             pk_share.verify_decrypt(ciphertext, partial_decryption, proof)
             partial_decryptions.append(partial_decryption)
-        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
+        plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(ciphertext, pk_shares, partial_decryptions)
         self.assertEqual(plaintext, 42)
 
         # not enough pre-computations
@@ -186,8 +186,8 @@ class TestPaillierShared(unittest.TestCase):
             pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
             partial_decryption_batches.append(partial_decryption_batch)
         partial_decryptions_batch = zip(*partial_decryption_batches)
-        for i, partial_decryptions in enumerate(partial_decryptions_batch):
-            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
+        for i, (ciphertext, partial_decryptions) in enumerate(zip(ciphertext_batch, partial_decryptions_batch)):
+            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(ciphertext, pk_shares, partial_decryptions)
             self.assertEqual(plaintext, i)
 
         # invalid decryptions
@@ -205,8 +205,8 @@ class TestPaillierShared(unittest.TestCase):
             pk_share.verify_decrypt_batched(ciphertext_batch, partial_decryption_batch, proof)
             partial_decryption_batches.append(partial_decryption_batch)
         partial_decryptions_batch = zip(*partial_decryption_batches)
-        for i, partial_decryptions in enumerate(partial_decryptions_batch):
-            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(pk_shares, partial_decryptions)
+        for i, (ciphertext, partial_decryptions) in enumerate(zip(ciphertext_batch, partial_decryptions_batch)):
+            plaintext = paillier.PaillierPublicKeyShare.assemble_decryption_shares(ciphertext, pk_shares, partial_decryptions)
             self.assertEqual(plaintext, i)
 
         # not enough pre-computations
