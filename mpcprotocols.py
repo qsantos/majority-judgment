@@ -11,7 +11,6 @@ Currently, two protocols are offered (in batched version):
     decrypt: collectively compute the plaintext corresponding to a ciphertext
     random_negate: either negate two values or leave them alone (but randomize)
 """
-import util
 import random
 
 import paillier
