@@ -9,8 +9,6 @@ messages).
 The main entry points of this module are `generate_paillier_keypair()` and
 `generate_paillier_keypair_shares()`.
 """
-import json
-import hashlib
 import random
 
 import util
@@ -29,21 +27,6 @@ _CP = 1
 #   * t, t1, t2: commitment
 #   * h: challenge (= H(…))
 #   * w: witness (exponent applied to the generator)
-
-
-def H(query, n=2**80):
-    """Simulation of a random oracle by a hash function
-
-    Arguments:
-        m (JSON serializable object): the query for the oracle
-        n (int): the output will be selected in ℤ_n
-
-    Returns:
-        int: an arbitrary but deterministic value in [0, n)
-    """
-    m = json.dumps(query, sort_keys=True).encode()
-    digest = hashlib.sha512(m).hexdigest()
-    return int(digest, 16) % n
 
 
 def generate_paillier_keypair(n_bits=2048, safe_primes=True):
@@ -308,7 +291,7 @@ class PaillierPublicKey:
         cyu, ryu = self.raw_multiply(cy, u)  # ⟦yu⟧
 
         # run protocol in the Fiat-Shamir heuristic
-        h = H([cx, cy, cz, cu, cyu])
+        h = util.H([cx, cy, cz, cu, cyu])
         rs = ru * util.powmod(rx, h, self.n) % self.n
         rys = ryu * util.powmod(rz, h, self.n) % self.n
         w = u + x*h
@@ -329,7 +312,7 @@ class PaillierPublicKey:
 
         # run protocol in the Fiat-Shamir heuristic
         cu, cyu, w, rs, rys = proof
-        h = H([cx, cy, cz, cu, cyu])
+        h = util.H([cx, cy, cz, cu, cyu])
 
         # verify proofs
         cs, _ = self.raw_multiply(self.g, w, rs)  # ⟦s⟧ = ⟦u + xe⟧
@@ -377,7 +360,7 @@ class PaillierPublicKey:
         cz_list = [cz for cz, rz in cz_rz_list]
         rz_list = [rz for cz, rz in cz_rz_list]
 
-        lambda_list = [H([cx, cy, cz]) for cy, cz in zip(cy_list, cz_list)]
+        lambda_list = [util.H([cx, cy, cz]) for cy, cz in zip(cy_list, cz_list)]
 
         # compute combined ciphertexts
         cy = util.prod(
@@ -397,7 +380,7 @@ class PaillierPublicKey:
         cyu, ryu = self.raw_multiply(cy, u)  # ⟦yu⟧
 
         # run private multiply protocol in the Fiat-Shamir heuristic
-        h = H([cx, cy, cz, cu, cyu])
+        h = util.H([cx, cy, cz, cu, cyu])
         rs = ru * util.powmod(rx, h, self.n) % self.n
         rys = ryu * util.powmod(rz, h, self.n) % self.n
         w = u + x*h
@@ -419,7 +402,7 @@ class PaillierPublicKey:
 
         # generate random λ_i *after* ciphertexts have been provided
         cu, cyu, w, rs, rys = proof
-        lambda_list = [H([cx, cy, cz]) for cy, cz in zip(cy_list, cz_list)]
+        lambda_list = [util.H([cx, cy, cz]) for cy, cz in zip(cy_list, cz_list)]
 
         # compute combined ciphertexts
         cy = util.prod(
@@ -432,7 +415,7 @@ class PaillierPublicKey:
         )
 
         # run private multiply protocol in the Fiat-Shamir heuristic
-        h = H([cx, cy, cz, cu, cyu])
+        h = util.H([cx, cy, cz, cu, cyu])
 
         # verify proofs
         cs, _ = self.raw_multiply(self.g, w, rs)  # ⟦s⟧ = ⟦u + xe⟧
@@ -559,7 +542,7 @@ class PaillierPublicKeyShare:
 
         # run Schnorr protocol in the Fiat-Shamir heuristic
         t, w = proof
-        h = H([self.verification_base, self.verification, t])
+        h = util.H([self.verification_base, self.verification, t])
 
         # verify proof
         if util.powmod(self.verification_base, w, pk.n) != \
@@ -581,7 +564,7 @@ class PaillierPublicKeyShare:
 
         # run Chaum-Pedersen protocol in the Fiat-Shamir heuristic
         t1, t2, w = proof
-        h = H([
+        h = util.H([
             ciphertext.raw_value, partial_decryption, t1,
             self.verification_base, self.verification, t2,
         ])
@@ -615,7 +598,7 @@ class PaillierPublicKeyShare:
 
         # generate random λ_i *after* decryption shares have been provided
         lambda_batch = [
-            H([ciphertext.raw_value, partial_decryption])
+            util.H([ciphertext.raw_value, partial_decryption])
             for ciphertext, partial_decryption in zip(ciphertext_batch, partial_decryption_batch)
         ]
 
@@ -628,7 +611,7 @@ class PaillierPublicKeyShare:
             util.powmod(ciphertext.raw_value, lambda_, pk.n)
             for ciphertext, lambda_ in zip(ciphertext_batch, lambda_batch)
         )
-        h = H([
+        h = util.H([
             combined_ciphertext, combined_plaintext, t1,
             self.verification_base, self.verification, t2,
         ])
@@ -741,7 +724,7 @@ class PaillierSecretKeyShare:
             t = util.powmod(self.verification_base, r, pk.n)
 
         # run Schnorr protocol in the Fiat-Shamir heuristic
-        h = H([self.verification_base, self.verification, t])
+        h = util.H([self.verification_base, self.verification, t])
         w = r + h * self.key_share
         proof = t, w
         return proof
@@ -787,7 +770,7 @@ class PaillierSecretKeyShare:
         t2 = util.powmod(ciphertext.raw_value, _CP*_QR*r, pk.n)
 
         # run Chaum-Pedersen protocol in the Fiat-Shamir heuristic
-        h = H([
+        h = util.H([
             ciphertext.raw_value, partial_decryption, t1,
             self.verification_base, self.verification, t2,
         ])
@@ -820,7 +803,7 @@ class PaillierSecretKeyShare:
         # have been provided; then combined_ciphertext = ∏ ciphertext^{λ_i}
         # and combined_plaintext = ∏ m^{λ_i} (not needed for prover)
         lambda_batch = [
-            H([ciphertext.raw_value, partial_decryption])
+            util.H([ciphertext.raw_value, partial_decryption])
             for ciphertext, partial_decryption in zip(ciphertext_batch, partial_decryption_batch)
         ]
         combined_plaintext = util.prod(
@@ -844,7 +827,7 @@ class PaillierSecretKeyShare:
         #   * v_i = v**key_share
         #   * combined_plaintext**2 = (combined_ciphertext**2)**(2*key_share)
         t2 = util.powmod(combined_ciphertext, _CP*_QR*r, pk.n)
-        h = H([
+        h = util.H([
             combined_ciphertext, combined_plaintext, t1,
             self.verification_base, self.verification, t2,
         ])

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Some utilities (mostly arithmetic)"""
 import random
+import json
+import hashlib
 
 import gmpy2
 
@@ -144,3 +146,18 @@ def random_numbers_totaling(total, count):
     fenceposts = sorted(random.choice(range(total+1)) for _ in range(count-1))
     # return the lengths of these subranges
     return [b - a for a, b in zip([0] + fenceposts, fenceposts + [total])]
+
+
+def H(query, n=2**80):
+    """Simulation of a random oracle by a hash function
+
+    Arguments:
+        m (JSON serializable object): the query for the oracle
+        n (int): the output will be selected in ℤ_n
+
+    Returns:
+        int: an arbitrary but deterministic value in [0, n)
+    """
+    m = json.dumps(query, sort_keys=True).encode()
+    digest = hashlib.sha512(m).hexdigest()
+    return int(digest, 16) % n
