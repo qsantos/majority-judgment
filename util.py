@@ -98,7 +98,7 @@ def crt(residues, moduli):
         int: `x` such that `x < ∏ moduli` and `x % modulus = residue` for
         residue, modulus in `zip(moduli, redidues)`
     """
-    redidues = list(residues)
+    residues = list(residues)
     product = prod(moduli)
     r = 0
     for residue, modulus in zip(residues, moduli):
