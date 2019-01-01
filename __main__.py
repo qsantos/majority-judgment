@@ -7,6 +7,7 @@ import datetime
 
 import util
 import mock
+import ballot
 import paillier
 import mpcprotocols
 import majorityjudgment
@@ -122,6 +123,7 @@ def main():
     parser.add_argument('--candidates', '-m', default=3, type=int)
     parser.add_argument('--bits', '-l', default=11, type=int)
     parser.add_argument('--simulations', default=1, type=int)
+    parser.add_argument('--ballots', default=0, type=int)
     parser.add_argument('seed', default=0, type=int, nargs='?')
     args = parser.parse_args()
 
@@ -130,7 +132,10 @@ def main():
 
     pk, protocols = load_keypair(args)
 
-    max_simulations = args.simulations if args.simulations else float('inf')
+    for _ in range(args.ballots):
+        ballot.prepare_ballot(pk, args.choices, args.candidates)
+
+    max_simulations = args.simulations if args.simulations >= 0 else float('inf')
     seed = args.seed
     simulated = 0
     while simulated < max_simulations:
